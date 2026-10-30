@@ -261,6 +261,9 @@ test('native owner collection reads its selected local books before adding same-
     await f.emit('GENERATION_AFTER_COMMANDS');
     await f.emit('GENERATION_STOPPED');
     await assert.rejects(f.loadWorldInfo('Shared'), /ambig/i);
+    await f.emit('GENERATION_AFTER_COMMANDS');
+    await f.emit('CHAT_CHANGED');
+    await assert.rejects(f.loadWorldInfo('Shared'), /ambig/i);
 });
 
 test('command-only generation startup never bypasses shared-name ambiguity', async () => {
