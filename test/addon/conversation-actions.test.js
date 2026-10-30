@@ -9,7 +9,7 @@ const id = '5ad90182-f1e2-4f6b-a143-c9d20d0b20d1';
 const sender = { accountId: 'guest', connectionId: 'guest-tab' };
 const message = () => ({ mes: 'Prepared {{text}}', name: 'PC', force_avatar: '/api/plugins/multiplayer/accounts/guest/personas/PC%20one.png', send_date: 'date', is_user: true, is_system: false, extra: { extension: { value: 3 }, multiplayer: { messageId: id, accountId: 'forged' } } });
 
-function setup(initial = [], saveStatus = 'saved') {
+function setup(initial = [], saveStatus = 'saved', isCurrent = () => true) {
     assert.equal(typeof api.createConversationActions, 'function', 'authoritative action queue is implemented');
     let messages = structuredClone(initial);
     let saved = structuredClone(initial);
@@ -25,7 +25,7 @@ function setup(initial = [], saveStatus = 'saved') {
         render: async () => { operations.push('render'); },
         save: async () => { operations.push('save'); if (saveStatus === 'saved') { saved = structuredClone(messages); } return { status: saveStatus }; },
     };
-    const queue = api.createConversationActions({ native, accountId: 'owner', bus: { send: async (...args) => events.push(args) }, onLocalFailure: (...args) => localFailures.push(args) });
+    const queue = api.createConversationActions({ native, accountId: 'owner', isCurrent, bus: { send: async (...args) => events.push(args) }, onLocalFailure: (...args) => localFailures.push(args) });
     queue.setAuthority(true);
     return { queue, native, events, operations, localFailures, messages: () => messages, saved: () => saved };
 }
@@ -195,6 +195,24 @@ test('external native generation cannot bypass failed restoration', async () => 
     h.native.loadSaved = async () => { throw new Error('Read unavailable'); };
     await assert.rejects(h.queue.enqueue('send', { message: message(), iteration: 0 }, sender));
     await assert.rejects(h.queue.prepareGeneration(), /Read unavailable/);
+});
+
+test('native selection changes invalidate queued work before CHAT_CHANGED finishes', async () => {
+    let selected = true;
+    const h = setup([], 'saved', () => selected);
+    let finish;
+    h.native.save = () => new Promise(resolve => { finish = () => resolve({ status: 'saved' }); });
+    const first = h.queue.enqueue('send', { message: message(), iteration: 0 }, sender);
+    await new Promise(resolve => setImmediate(resolve));
+    const next = message(); next.extra.multiplayer.messageId = '121c9cf0-9998-4e80-a831-0d474a99d2fa';
+    const second = h.queue.enqueue('send', { message: next, iteration: 0 }, sender);
+    selected = false;
+    h.native.save = async () => ({ status: 'saved' });
+    finish();
+    await first;
+    await second;
+    assert.equal(h.messages().length, 1);
+    assert.deepEqual(h.events, []);
 });
 
 test('edit confirmation matches current text, never historical swipe', () => {
