@@ -219,6 +219,15 @@ test('restoring an empty owner transcript clears failed in-memory changes withou
     assert.deepEqual(native.chat, []);
 });
 
+test('a save for a different chat cannot confirm the selected chat attempt', async t => {
+    const { adapter, native, window } = fixture(t);
+    window.fetch = async () => Response.json({ result: 'ok' });
+    await adapter.reload(identity, { isOwner: true });
+    native.saveChatConditional = async () => { await window.fetch('/api/chats/group/save', { method: 'POST', body: JSON.stringify({ id: 'another-chat', chat: [] }) }); };
+    adapter.mount();
+    assert.notEqual((await adapter.save()).status, 'saved');
+});
+
 test('a normally returning native helper without a persistence response does not confirm saving', async t => {
     const { adapter } = fixture(t);
     adapter.mount();
