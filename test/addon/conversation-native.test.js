@@ -128,10 +128,13 @@ test('failed guest read retains the displayed transcript and draft', async t => 
     assert.equal(document.querySelector('#send_textarea').value, 'new draft');
 });
 
-test('selected owner reload delegates to native group loading while preserving draft', async t => {
-    const { adapter, calls, document } = fixture(t);
+test('selected owner reload uses native group transport and rendering while preserving draft', async t => {
+    const { adapter, calls, document, native } = fixture(t);
+    native.loadItemizedPrompts = async chatId => calls.push(['prompts', chatId]);
     await adapter.reload(identity, { isOwner: true });
-    assert.deepEqual(calls, [['ownerLoad', '42', true]]);
+    assert.ok(calls.some(([name, url]) => name === 'fetch' && url === '/api/chats/group/get'));
+    assert.ok(calls.some(([name, chatId]) => name === 'prompts' && chatId === identity.chatId));
+    assert.ok(calls.some(([name]) => name === 'render'));
     assert.equal(document.querySelector('#send_textarea').value, 'new draft');
 });
 
@@ -244,6 +247,21 @@ test('message rendered events follow DOM insertion without clearing extension co
     await adapter.render();
     assert.equal(cleared, false);
     assert.equal(rendered, 1);
+});
+
+test('owner reload invalidated during native prompt loading cannot apply its old transcript', async t => {
+    const { adapter, native, window } = fixture(t);
+    let finish;
+    native.loadItemizedPrompts = () => new Promise(resolve => { finish = resolve; });
+    window.fetch = async () => Response.json([{ mes: 'old shared' }]);
+    const reload = adapter.reload(identity, { isOwner: true });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(typeof finish, 'function');
+    adapter.invalidate();
+    native.chat.splice(0, native.chat.length, { mes: 'ordinary' });
+    finish();
+    await reload;
+    assert.deepEqual(native.chat, [{ mes: 'ordinary' }]);
 });
 
 test('a normally returning native helper without a persistence response does not confirm saving', async t => {
