@@ -13,6 +13,8 @@ async function fixture(t, isOwner = true) {
     const sent = [];
     const saves = [];
     const generated = [];
+    const prompts = new Map();
+    const personaRequests = [];
     let saved = [];
     let failSave = false;
     const native = {
@@ -20,6 +22,8 @@ async function fixture(t, isOwner = true) {
         event_types: { CHAT_CHANGED: 'changed', GENERATION_STARTED: 'generation-started', GENERATION_AFTER_COMMANDS: 'after-commands', GENERATION_STOPPED: 'stopped', MESSAGE_RECEIVED: 'received', STREAM_TOKEN_RECEIVED: 'stream', GROUP_WRAPPER_STARTED: 'started', GROUP_WRAPPER_FINISHED: 'finished' },
         eventSource: { on(name, listener) { const list = events.get(name) ?? []; list.push(listener); events.set(name, list); }, removeListener() {}, async emit(name, ...args) { for (const listener of events.get(name) ?? []) { await listener(...args); } } },
         name1: 'PC', user_avatar: 'pc.png', power_user: {}, regex_placement: { USER_INPUT: 1 },
+        setExtensionPrompt(key, text) { prompts.set(key, text); },
+        extension_prompt_types: { IN_PROMPT: 0 }, extension_prompt_roles: { SYSTEM: 0 },
         getBiasStrings: () => ({}), getRegexedString: text => text, substituteParams: text => text,
         getMessageTimeStamp: () => 'now', populateFileAttachment: async () => {}, processCommands: async text => text.startsWith('/'),
         async getGroupChat() { native.chat.splice(0, native.chat.length, ...structuredClone(saved)); },
@@ -30,6 +34,7 @@ async function fixture(t, isOwner = true) {
         async Generate(...args) { generated.push(args); }, stopGeneration() {}, shouldSendOnEnter: () => true, isPopupOpen: () => false,
     };
     dom.window.fetch = async (url, options) => {
+        if (url.endsWith('/description')) { personaRequests.push(url); return Response.json({ description: 'A guest explorer.' }); }
         if (url === '/api/chats/group/save' && failSave) { failSave = false; return Response.json({ error: 'save failed' }, { status: 500 }); }
         if (url === '/api/chats/group/save') { saves.push(JSON.parse(options.body)); saved = structuredClone(native.chat); return Response.json({ result: 'ok' }); }
         return Response.json(saved);
@@ -41,10 +46,51 @@ async function fixture(t, isOwner = true) {
     };
     const integration = await mountConversations({ native, window: dom.window, document: dom.window.document, accountId: isOwner ? 'owner' : 'guest', bus });
     t.after(async () => { await integration.dispose(); dom.window.close(); });
-    return { integration, native, dom, sent, saves, generated, failNextSave() { failSave = true; }, async emit(name, body, sender = { accountId: 'guest', connectionId: 'tab' }) { for (const listener of handlers.get(name) ?? []) { await listener(chat, sender, body); } } };
+    return { integration, native, dom, sent, saves, generated, prompts, personaRequests, failNextSave() { failSave = true; }, async emit(name, body, sender = { accountId: 'guest', connectionId: 'tab' }) { for (const listener of handlers.get(name) ?? []) { await listener(chat, sender, body); } } };
 }
 
 async function settle() { for (let i = 0; i < 5; i++) { await new Promise(resolve => setImmediate(resolve)); } }
+
+test('shared generation injects only other accounts latest saved personas and preserves our native persona', async t => {
+    const h = await fixture(t);
+    h.native.power_user.persona_description = 'Our native description';
+    const player = (accountId, filename, name) => ({ is_user: true, is_system: false, name, force_avatar: `/api/plugins/multiplayer/accounts/${accountId}/personas/${filename}`, extra: { multiplayer: { accountId } } });
+    h.native.chat.push(player('guest', 'old.png', 'Old'), player('owner', 'ours.png', 'Ours'), player('guest', 'new.png', 'New'));
+    h.integration.session.localSaved(h.native.chat);
+    h.native.chat.push(player('guest', 'unsaved.png', 'Unsaved'));
+    await h.native.eventSource.emit('generation-started', 'normal', {}, false);
+    assert.deepEqual(h.personaRequests, ['/api/plugins/multiplayer/accounts/guest/personas/new.png/description']);
+    assert.match(h.prompts.get('multiplayer-personas') ?? '', /New[\s\S]*A guest explorer\./);
+    assert.equal(h.native.power_user.persona_description, 'Our native description');
+    await h.native.eventSource.emit('finished', { type: 'normal' });
+    assert.equal(h.prompts.get('multiplayer-personas'), '');
+});
+
+test('private assistance and ordinary chats do not inherit shared persona context', async t => {
+    const h = await fixture(t);
+    h.integration.session.localSaved([{ is_user: true, name: 'Guest', force_avatar: '/api/plugins/multiplayer/accounts/guest/personas/pc.png', extra: { multiplayer: { accountId: 'guest' } } }]);
+    await h.native.eventSource.emit('generation-started', 'normal', {}, false);
+    await h.native.eventSource.emit('generation-started', 'impersonate', {}, false);
+    assert.equal(h.prompts.get('multiplayer-personas'), '');
+    assert.equal(h.personaRequests.length, 1);
+    h.native.selectedGroup = null;
+    await h.native.eventSource.emit('changed');
+    await h.native.eventSource.emit('generation-started', 'normal', {}, false);
+    assert.equal(h.personaRequests.length, 1);
+    assert.equal(h.prompts.get('multiplayer-personas'), '');
+});
+
+test('description fetch failures stop native generation after its abort controller is installed', async t => {
+    const h = await fixture(t);
+    h.integration.session.localSaved([{ is_user: true, name: 'Guest', force_avatar: '/api/plugins/multiplayer/accounts/guest/personas/pc.png', extra: { multiplayer: { accountId: 'guest' } } }]);
+    h.dom.window.fetch = async () => Response.json({}, { status: 500 });
+    await h.native.eventSource.emit('generation-started', 'normal', {}, false).catch(() => {});
+    let stopped = false;
+    h.native.stopGeneration = () => { stopped = true; };
+    await h.native.eventSource.emit('after-commands', 'normal', {}, false);
+    assert.equal(stopped, true);
+    assert.equal(h.prompts.get('multiplayer-personas'), '');
+});
 
 test('mounted owner text submission prepares and saves without generating or bus action request', async t => {
     const h = await fixture(t);
