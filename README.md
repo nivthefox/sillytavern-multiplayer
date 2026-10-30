@@ -72,10 +72,6 @@ Replace the path as you did during installation, then restart SillyTavern. Updat
 - **Setup refuses to overwrite an existing installation:** There is already something installed at `plugins/multiplayer`. Setup leaves it untouched. The server administrator should check it before removing or relocating it and trying again.
 - **Upgrading from the old manual installation:** Remove the old browser-addon symlink pointing to `addon/`, without deleting the folder it points to, then install through SillyTavern's extension dialog. An existing server-plugin symlink pointing to this installation can stay in place.
 
-## Browser library
-
-Addon developers can use the reusable [browser event-bus library](docs/browser-event-bus.md) for authenticated messaging, chat association, and reconnection. Shared-chat UI and gameplay workflows remain under development.
-
 ## License
 
 Copyright © 2026 Kevin Kragenbrink, II.
