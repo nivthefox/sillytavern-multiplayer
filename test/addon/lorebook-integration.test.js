@@ -18,8 +18,10 @@ async function fixture(t, isOwner = false) {
     const errors = [];
     let current = chat;
     let contents = 'complete shared book';
+    let failReads = false;
     let lorebooks = [{ accountId: 'owner', filename: 'World.json' }, { accountId: 'guest', filename: 'PC.json' }];
     const native = {
+        uuidv4: () => 'native-compatible-uuid',
         worldInfoCache: new Map(), world_names: ['PC'], selected_world_info: ['Global'], world_info: {},
         chat_metadata: { world_info: 'Chat' }, power_user: { persona_description_lorebook: 'PC' },
         selected_group: 'g', groups: [{ id: 'g', members: ['npc.png'] }],
@@ -32,7 +34,7 @@ async function fixture(t, isOwner = false) {
     };
     dom.window.fetch = async (url, options) => {
         requests.push([url, options]);
-        if (String(url).includes('/lore/')) { return Response.json(data(contents)); }
+        if (String(url).includes('/lore/')) { return failReads ? Response.json({}, { status: 500 }) : Response.json(data(contents)); }
         if (url === '/api/worldinfo/get') { return Response.json(data('local book')); }
         return Response.json({ ok: true });
     };
@@ -62,6 +64,7 @@ async function fixture(t, isOwner = false) {
     }
     return { mounted, native, bus, sent, requests, errors, load, emit,
         setContents(value) { contents = value; }, setList(value) { lorebooks = value; },
+        failReads() { failReads = true; },
         leaveChat() { current = null; return bus.leave(); },
         async nativeEvent(name) { for (const fn of events.get(name) ?? []) { await fn(); } },
     };
@@ -100,12 +103,30 @@ test('another tab saving an own-account shared book invalidates stale native cac
     await h.emit('multiplayer.lorebook.saved', { filename: 'PC.json' }, { accountId: 'guest' });
     assert.equal(h.native.worldInfoCache.get('PC').entries[0].content, 'cached after join');
     await h.emit('multiplayer.lorebook.saved', { filename: 'PC.json' }, { accountId: 'guest', connectionId: 'another-tab' });
-    assert.equal((await h.load('PC')).entries[0].content, 'local book');
+    assert.equal((await h.load('PC')).entries[0].content, 'complete shared book');
     h.native.worldInfoCache.set('PC', data('current local edit'));
     const before = h.requests.length;
     await h.emit('multiplayer.lorebook.saved', { filename: 'PC.json' }, { accountId: 'guest', connectionId: 'self' });
     assert.equal(h.requests.length, before);
     assert.equal((await h.load('PC')).entries[0].content, 'current local edit');
+});
+
+test('failed same-account refresh and rejoin retain the native cache rather than forcing a failing local read', async t => {
+    const h = await fixture(t);
+    await h.bus.join(chat);
+    h.native.worldInfoCache.set('PC', data('native fallback'));
+    h.failReads();
+    await h.emit('multiplayer.lorebook.saved', { filename: 'PC.json' }, { accountId: 'guest', connectionId: 'other-tab' });
+    assert.equal((await h.load('PC')).entries[0].content, 'native fallback');
+    await h.bus.join(chat);
+    assert.equal((await h.load('PC')).entries[0].content, 'native fallback');
+    assert.ok(h.errors.length > 0);
+});
+
+test('production identity uses the native UUID helper compatible with HTTP LAN origins', async t => {
+    const h = await fixture(t);
+    await h.bus.join(chat);
+    assert.deepEqual(h.sent.find(item => item[1] === 'multiplayer.lorebooks.identify')[2], { nonce: 'native-compatible-uuid' });
 });
 
 test('rejoin refreshes native reads, disconnect retains cache, deletion and leave remove shared availability', async t => {

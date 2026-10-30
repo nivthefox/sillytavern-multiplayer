@@ -87,6 +87,19 @@ test('leaving clears shared access immediately and disposal restores bus methods
     assert.equal(f.handlers.size, 0);
 });
 
+test('lorebook hydration never delays the conversation join acknowledgment', async () => {
+    const f = fixture();
+    let finish;
+    let returned = false;
+    f.session.joined = () => new Promise(resolve => { finish = resolve; });
+    const joining = f.bus.join(chat).then(() => { returned = true; });
+    for (let index = 0; index < 10; index++) { await Promise.resolve(); }
+    const returnedBeforeHydration = returned;
+    finish();
+    await joining;
+    assert.equal(returnedBeforeHydration, true);
+});
+
 test('authority updates during join book loading are not dropped', async () => {
     const f = fixture();
     let finish;
