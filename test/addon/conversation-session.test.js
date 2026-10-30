@@ -325,6 +325,90 @@ test('a reload finishing after close cannot restore the previous transcript', as
     assert.deepEqual(h.sends, []);
 });
 
+for (const code of ['connection_unavailable', 'unknown_outcome']) {
+    test(`close tolerates ${code} from leave and permits reopening the same session`, async () => {
+        const h = await open({ isOwner: true });
+        await h.emit('bus.disconnected', null, null, null);
+        let leaveCalls = 0;
+        h.bus.leave = async () => {
+            leaveCalls++;
+            throw Object.assign(new Error('Connection lost while leaving'), { code });
+        };
+        await assert.doesNotReject(() => h.session.close());
+        assert.equal(leaveCalls, 1);
+        assert.equal(h.session.getState().chat, null);
+        assert.equal(h.session.getState().canChange, false);
+        const rendersAfterClose = h.renders.length;
+        await h.emit('bus.status', { isOwner: true, ownerPresent: true }, null);
+        assert.equal(h.renders.length, rendersAfterClose);
+        h.setSaved([message('After reconnect')]);
+        await h.session.open(chat);
+        assert.equal(h.joins, 2);
+        assert.equal(h.loads.length, 2);
+        assert.equal(h.session.getState().isOwner, true);
+        assert.deepEqual(h.session.getState().messages, [message('After reconnect')]);
+        assert.equal(h.stops, 1);
+        await h.emit('multiplayer.message.send', { message: message(), iteration: 0 }, guest);
+        assert.equal(h.actions.length, 1);
+    });
+}
+
+test('reopening the same chat ignores an earlier open load and registers each handler once', async () => {
+    const h = fixture();
+    const loads = [];
+    const session = createConversationSession({
+        bus: h.bus,
+        loadChat: () => new Promise(resolve => { loads.push(resolve); }),
+        render() {},
+        onAction() {},
+        stopAuthority() {},
+    });
+    const firstOpen = session.open(chat);
+    await new Promise(resolve => setImmediate(resolve));
+    await session.close();
+    const secondOpen = session.open(chat);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(loads.length, 2);
+    loads[1]([message('Reopened saved transcript')]);
+    await secondOpen;
+    loads[0]([message('Stale original transcript')]);
+    await firstOpen;
+    assert.deepEqual(session.getState().messages, [message('Reopened saved transcript')]);
+    assert.deepEqual(h.sends, [['owner', 'multiplayer.generation.status_request', {}]]);
+    const refresh = h.emit('multiplayer.chat.saved', {});
+    assert.equal(loads.length, 3);
+    loads[2]([message('Latest save')]);
+    await refresh;
+    assert.deepEqual(session.getState().messages, [message('Latest save')]);
+});
+
+test('reconnect saved reload supersedes a pre-disconnect load even in the same chat', async () => {
+    const h = fixture();
+    const loads = [];
+    const session = createConversationSession({
+        bus: h.bus,
+        loadChat: () => new Promise(resolve => { loads.push(resolve); }),
+        render() {},
+        onAction() {},
+        stopAuthority() {},
+    });
+    const opening = session.open(chat);
+    await new Promise(resolve => setImmediate(resolve));
+    loads[0]([message('Initial saved state')]);
+    await opening;
+    const oldRefresh = h.emit('multiplayer.chat.saved', {});
+    await h.emit('bus.disconnected', null, null, null);
+    const reconnect = h.emit('bus.status', { isOwner: false, ownerPresent: true }, null);
+    assert.equal(loads.length, 3);
+    loads[2]([message('Saved while disconnected')]);
+    await reconnect;
+    loads[1]([message('Stale before disconnect')]);
+    await oldRefresh;
+    assert.deepEqual(session.getState().messages, [message('Saved while disconnected')]);
+    assert.equal(h.joins, 1);
+    assert.equal(session.getState().canChange, true);
+});
+
 test('closed controller unsubscribes and ignores later events', async () => {
     const h = await open();
     await h.session.close();
