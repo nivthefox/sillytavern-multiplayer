@@ -791,6 +791,52 @@ for (const intent of ['join', 'leave']) {
     });
 }
 
+test('failed replacement join retains ownership updates for the still-open previous chat', async () => {
+    const h = createHarness();
+    const socket = await h.connect();
+    await h.join(socket, chatA, { ...joinedData, ownerPresent: false });
+    const statuses = [];
+    h.bus.on('bus.status', (...args) => statuses.push(args));
+    const replacement = observe(h.bus.join(chatB));
+    await flush();
+    const request = socket.sent.at(-1);
+    socket.message({ op: 'status', chat: chatA, isOwner: false, ownerPresent: true });
+    await flush();
+    await h.reply(socket, request, null, { code: 'forbidden', message: 'Denied' });
+    rejected(replacement, /forbidden/);
+    assert.deepEqual(statuses, [[chatA, null, { isOwner: false, ownerPresent: true }]]);
+    assert.deepEqual(h.bus.sessionStatus, { isOwner: false, ownerPresent: true });
+    const send = observe(h.bus.send('owner', 'addon.event', {}));
+    await flush();
+    assert.equal(socket.sent.at(-1).op, 'send');
+    await h.reply(socket, socket.sent.at(-1));
+    fulfilled(send, undefined);
+});
+
+test('connect during backoff cannot reuse a closed socket successful opening result', async () => {
+    const h = createHarness();
+    const socket = await h.connect();
+    let fromHandler;
+    h.bus.on('bus.disconnected', () => {
+        fromHandler = observe(h.bus.connect());
+    });
+    socket.close();
+    await flush();
+    rejected(fromHandler, /connection_unavailable/);
+    const explicit = observe(h.bus.connect());
+    await flush();
+    rejected(explicit, /connection_unavailable/);
+    assert.equal(h.requests.length, 1);
+    await h.advance(999);
+    assert.equal(h.requests.length, 1);
+    await h.advance(1);
+    assert.equal(h.requests.length, 2);
+    const retry = observe(h.bus.connect());
+    h.sockets.at(-1).open();
+    await flush();
+    fulfilled(retry, undefined);
+});
+
 test('session status getter cannot mutate the library state', async () => {
     const h = createHarness();
     const socket = await h.connect();
