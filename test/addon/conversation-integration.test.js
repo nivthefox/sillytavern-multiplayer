@@ -179,7 +179,8 @@ test('stream previews wait for native rendered content and never publish reasoni
     await h.integration.session.generationStatus(true);
     h.native.chat.push({ mes: 'previous', name: 'GM', is_user: false, extra: { reasoning: 'secret' } });
     h.native.streamingProcessor = { messageId: 0, type: 'normal' };
-    const text = h.dom.window.document.createElement('div'); text.className = 'mes_text'; h.dom.window.document.querySelector('#chat').append(text);
+    const row = h.dom.window.document.createElement('div'); row.className = 'mes'; row.setAttribute('mesid', '0');
+    const text = h.dom.window.document.createElement('div'); text.className = 'mes_text'; row.append(text); h.dom.window.document.querySelector('#chat').append(row);
     await h.native.eventSource.emit('stream', 'new response');
     assert.equal(h.sent.filter(([, event]) => event === 'multiplayer.generation.preview').length, 0);
     h.native.chat[0].mes = 'new response';

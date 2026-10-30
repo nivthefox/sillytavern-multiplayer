@@ -255,6 +255,17 @@ test('Guided Simple Send uses shared submission without intercepting Guided Impe
     assert.deepEqual(calls, [['submit', 'assisted turn'], ['draftAssist']]);
 });
 
+test('shared chats do not expose native automatic group generation', t => {
+    const { ui, document } = fixture(t);
+    const automatic = document.createElement('input'); automatic.type = 'checkbox'; automatic.id = 'rm_group_automode'; document.body.append(automatic);
+    let activated = false;
+    automatic.addEventListener('click', () => { activated = true; });
+    ui.refresh();
+    assert.equal(hidden(automatic), true);
+    automatic.click();
+    assert.equal(activated, false);
+});
+
 test('dispose restores ordinary native submission handling', t => {
     const { ui, document, calls } = fixture(t);
     ui.dispose();
