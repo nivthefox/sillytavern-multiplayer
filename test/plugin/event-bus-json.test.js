@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createEventBus } from '../../plugin/event-bus.js';
+import * as eventBus from '../../plugin/event-bus.js';
 
 const chat = { accountId: 'owner', groupId: 'group', chatId: 'chat' };
 
 for (const destination of ['all', 'server']) {
     for (const kind of ['BigInt', 'circular', 'undefined']) {
         test(`server sends reject ${kind} before routing to ${destination}`, async t => {
-            const bus = createEventBus({ authorizeJoin: async () => {} });
+            assert.equal(typeof eventBus.EventBus, 'function');
+            const bus = new eventBus.EventBus({ authorizeJoin: async () => {} });
             t.after(() => bus.close());
             const delivered = [];
             const client = bus.connect('owner', envelope => delivered.push(envelope));

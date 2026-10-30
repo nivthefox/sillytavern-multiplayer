@@ -6,17 +6,7 @@ import { inspect } from 'node:util';
 
 import { WebSocket } from 'ws';
 
-const transportUrl = new URL('../../plugin/event-transport.js', import.meta.url);
-const { createEventTransport } = await import(transportUrl.href).catch(error => {
-    if (error.code !== 'ERR_MODULE_NOT_FOUND' || error.url !== transportUrl.href) {
-        throw error;
-    }
-    return {
-        createEventTransport() {
-            assert.fail('Missing createEventTransport implementation in plugin/event-transport.js');
-        },
-    };
-});
+import * as transportModule from '../../plugin/event-transport.js';
 
 const mount = '/api/plugins/multiplayer';
 const start = Date.parse('2026-10-30T18:00:00.000Z');
@@ -135,7 +125,8 @@ async function setup(t) {
     const bus = createBus();
     const logs = [];
     const logger = Object.fromEntries(['debug', 'info', 'warn', 'error', 'log'].map(level => [level, (...args) => logs.push(args)]));
-    const transport = createEventTransport({ bus, now: clock.now, timers: clock.timers, logger });
+    assert.equal(typeof transportModule.EventTransport, 'function', 'EventTransport must be an exported constructor');
+    const transport = new transportModule.EventTransport({ bus, now: clock.now, timers: clock.timers, logger });
     const host = await serve(t, transport);
     t.after(() => transport.close());
     return { ...host, transport, clock, bus, logs };

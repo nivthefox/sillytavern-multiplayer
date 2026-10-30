@@ -8,8 +8,8 @@ import { test } from 'node:test';
 import express from 'express';
 import { WebSocket } from 'ws';
 
-import { createEventBus } from '../../plugin/event-bus.js';
-import { createEventTransport } from '../../plugin/event-transport.js';
+import * as eventBus from '../../plugin/event-bus.js';
+import * as eventTransport from '../../plugin/event-transport.js';
 import { exit, init } from '../../plugin/index.js';
 
 const mount = '/api/plugins/multiplayer';
@@ -91,14 +91,16 @@ async function post(url, headers) {
 async function runtime(t, secure = false) {
     const clock = createClock();
     const authorizations = [];
-    const bus = createEventBus({
+    assert.equal(typeof eventBus.EventBus, 'function');
+    assert.equal(typeof eventTransport.EventTransport, 'function');
+    const bus = new eventBus.EventBus({
         async authorizeJoin(accountId, identity) {
             authorizations.push({ accountId, identity });
             assert.ok(['owner', 'guest'].includes(accountId));
             assert.deepEqual(identity, chat);
         },
     });
-    const transport = createEventTransport({ bus, now: clock.now, timers: clock.timers });
+    const transport = new eventTransport.EventTransport({ bus, now: clock.now, timers: clock.timers });
     const observedServers = [];
     const handler = async (req, res) => {
         req.user = { profile: { handle: req.headers['x-test-account'] } };

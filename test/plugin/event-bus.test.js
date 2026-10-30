@@ -2,20 +2,7 @@ import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
 import { test } from 'node:test';
 
-const moduleUrl = new URL('../../plugin/event-bus.js', import.meta.url);
-const { createEventBus } = await import(moduleUrl.href).catch(error => {
-    if (error.code !== 'ERR_MODULE_NOT_FOUND' || error.url !== moduleUrl.href) {
-        throw error;
-    }
-    return {
-        createEventBus: () => ({
-            connect: () => ({ id: undefined, receive: async () => {}, disconnect() {} }),
-            on: () => () => {},
-            send: async () => {},
-            close() {},
-        }),
-    };
-});
+import * as eventBusModule from '../../plugin/event-bus.js';
 
 const chat = { accountId: 'host', groupId: 'group', chatId: 'scene' };
 const otherChat = { ...chat, chatId: 'other' };
@@ -23,7 +10,8 @@ const eventName = 'rpg-companion.update';
 
 function setup(t, authorizeJoin = async () => {}) {
     const logs = [];
-    const bus = createEventBus({ authorizeJoin, logger: { error: (...args) => logs.push(args) } });
+    assert.equal(typeof eventBusModule.EventBus, 'function', 'EventBus must be an exported constructor');
+    const bus = new eventBusModule.EventBus({ authorizeJoin, logger: { error: (...args) => logs.push(args) } });
     t.after(() => bus.close());
     function connect(accountId = 'guest', deliver) {
         const messages = [];
@@ -31,6 +19,8 @@ function setup(t, authorizeJoin = async () => {}) {
             messages.push(structuredClone(envelope));
             deliver?.(envelope);
         });
+        assert.equal(typeof eventBusModule.EventConnection, 'function', 'EventConnection must be an exported constructor');
+        assert.ok(connection instanceof eventBusModule.EventConnection);
         return { connection, messages, accountId };
     }
     return { bus, connect, logs };
@@ -104,6 +94,22 @@ function books(client) {
 function sortedBooks(value) {
     return [...value].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 }
+
+test('EventBus and EventConnection expose class prototype methods rather than per-instance closures', t => {
+    const { bus, connect } = setup(t);
+    assert.ok(bus instanceof eventBusModule.EventBus);
+    const { connection } = connect();
+    for (const [instance, constructor, methods] of [
+        [bus, eventBusModule.EventBus, ['connect', 'on', 'send', 'close']],
+        [connection, eventBusModule.EventConnection, ['receive', 'disconnect']],
+    ]) {
+        for (const method of methods) {
+            assert.equal(typeof constructor.prototype[method], 'function');
+            assert.equal(Object.hasOwn(instance, method), false);
+            assert.equal(instance[method], constructor.prototype[method]);
+        }
+    }
+});
 
 test('connections have unique server-generated nonreserved string identities', t => {
     const { connect } = setup(t);
