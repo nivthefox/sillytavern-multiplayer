@@ -228,6 +228,24 @@ test('a save for a different chat cannot confirm the selected chat attempt', asy
     assert.notEqual((await adapter.save()).status, 'saved');
 });
 
+test('message rendered events follow DOM insertion without clearing extension context', async t => {
+    const { adapter, native, window, document } = fixture(t);
+    let cleared = false;
+    let rendered = 0;
+    native.clearChat = async () => { cleared = true; };
+    native.event_types = { USER_MESSAGE_RENDERED: 'rendered', MESSAGE_SENT: 'sent' };
+    native.eventSource = { async emit(name) { if (name === 'rendered') { assert.ok(document.querySelector('.mes')); rendered++; } } };
+    native.redisplayChat = async () => { const row = document.createElement('div'); row.className = 'mes'; document.querySelector('#chat').append(row); };
+    native.saveChatConditional = async () => { await window.fetch('/api/chats/group/save', { method: 'POST' }); };
+    window.fetch = async () => Response.json({ result: 'ok' });
+    adapter.mount();
+    await adapter.insertMessage({ mes: 'turn', is_user: true });
+    await adapter.save();
+    await adapter.render();
+    assert.equal(cleared, false);
+    assert.equal(rendered, 1);
+});
+
 test('a normally returning native helper without a persistence response does not confirm saving', async t => {
     const { adapter } = fixture(t);
     adapter.mount();

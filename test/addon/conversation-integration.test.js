@@ -95,6 +95,20 @@ test('native generation saves notify viewers and assign AI identity before persi
     assert.deepEqual(h.sent, [['all', 'multiplayer.chat.saved', {}]]);
 });
 
+test('a guest reload arriving after leaving cannot replace an ordinary chat', async t => {
+    const h = await fixture(t, false);
+    let finish;
+    h.dom.window.fetch = () => new Promise(resolve => { finish = resolve; });
+    const reload = h.emit('multiplayer.chat.saved', {});
+    await settle();
+    h.native.selectedGroup = null;
+    await h.native.eventSource.emit('changed');
+    h.native.chat.splice(0, h.native.chat.length, { mes: 'ordinary' });
+    finish(Response.json([{ mes: 'old shared chat' }]));
+    await reload;
+    assert.deepEqual(h.native.chat, [{ mes: 'ordinary' }]);
+});
+
 test('remote human turn is attributed and saved through the mounted owner queue', async t => {
     const h = await fixture(t);
     await h.emit('multiplayer.message.send', { iteration: 0, message: { mes: 'remote', name: 'PC', force_avatar: '/api/plugins/multiplayer/accounts/guest/personas/pc.png', send_date: 'then', is_user: true, is_system: false, extra: { multiplayer: { messageId: id } } } });
