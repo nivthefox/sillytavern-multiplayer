@@ -4,11 +4,13 @@ import { createOwnershipNative } from './ownership-native.js';
 const initializations = new WeakMap();
 
 async function startOwnership({ window, document, loadModule, createService, createAdapter }) {
-    const [script, groups, users, extensions] = await Promise.all([
+    const [script, groups, users, extensions, utils, welcome] = await Promise.all([
         loadModule('/script.js'),
         loadModule('/scripts/group-chats.js'),
         loadModule('/scripts/user.js'),
         loadModule('/scripts/extensions.js'),
+        loadModule('/scripts/utils.js'),
+        loadModule('/scripts/welcome-screen.js'),
     ]);
     await new Promise(resolve => script.eventSource.on(script.event_types.APP_READY, resolve));
     const user = users.currentUser;
@@ -41,12 +43,16 @@ async function startOwnership({ window, document, loadModule, createService, cre
         displayPastChats: script.displayPastChats,
         getCharacters: script.getCharacters,
         getRequestHeaders: script.getRequestHeaders,
+        compareRecentChats: (left, right) => utils.sortMoments(utils.timestampToMoment(left.last_mes), utils.timestampToMoment(right.last_mes)),
+        setActiveGroup: script.setActiveGroup,
+        saveSettingsDebounced: script.saveSettingsDebounced,
         default_avatar: script.default_avatar,
         reportError,
     };
     const adapter = createAdapter({ service, native, document, window });
     await adapter.mount();
     await adapter.refreshGroups();
+    await welcome.openWelcomeScreen({ force: true });
     return adapter;
 }
 

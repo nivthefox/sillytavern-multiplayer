@@ -184,8 +184,41 @@ export function createOwnershipNative({ service, native, document, window }) {
         };
     }
 
+    async function recentChats(input, options) {
+        const response = await originalFetch.call(window, input, options);
+        if (!response.ok) { return response; }
+        const local = await response.clone().json();
+        if (!Array.isArray(local)) { return response; }
+        const request = await requestBody(input, options);
+        const pinned = Array.isArray(request.pinned) ? request.pinned : [];
+        const shared = await Promise.all(native.groups.map(async group => {
+            const entry = entries.get(String(group.id));
+            if (!entry || entry.owner.id === service.account.id) { return []; }
+            try {
+                const summaries = await serviceOperation(() => service.listChats(entry.owner.id, entry.group.id));
+                return summaries.map(summary => ({ ...summary, group: group.id }));
+            } catch (error) {
+                report(error);
+                return [];
+            }
+        }));
+        const unique = new Map();
+        for (const chat of [...local, ...shared.flat()]) {
+            const key = JSON.stringify([chat.group ? 'group' : 'character', chat.group ?? chat.avatar ?? '', chat.file_name]);
+            unique.set(key, chat);
+        }
+        const isPinned = chat => pinned.some(pin => pin.file_name === chat.file_name && (chat.group ? pin.group === chat.group : pin.avatar === chat.avatar));
+        const sorted = [...unique.values()].sort((left, right) => {
+            const priority = Number(isPinned(right)) - Number(isPinned(left));
+            return priority || native.compareRecentChats(left, right);
+        });
+        const max = Number.parseInt(request.max ?? Number.MAX_SAFE_INTEGER, 10) + pinned.length;
+        return Response.json(sorted.slice(0, max));
+    }
+
     async function interceptedFetch(input, options) {
         const path = requestPath(input, document.baseURI ?? window.location.href);
+        if (path === '/api/chats/recent') { return recentChats(input, options); }
         if (path === '/api/groups/create') {
             return createNativeGroup(input, options);
         }
@@ -376,6 +409,10 @@ export function createOwnershipNative({ service, native, document, window }) {
                 decorateGroupCard(card, entry);
             }
         }
+        for (const card of document.querySelectorAll('.recentChat.group')) {
+            const entry = entries.get(String(card.getAttribute('data-group')));
+            if (entry) { decorateGroupCard(card, entry); }
+        }
         const preview = document.getElementById('group_avatar_preview');
         const panelEntry = entries.get(String(panelGroupId === undefined ? native.openGroupId : panelGroupId));
         if (preview && panelEntry && panelEntry.owner.id !== service.account.id) {
@@ -443,9 +480,13 @@ export function createOwnershipNative({ service, native, document, window }) {
         return projection;
     }
 
-    async function openGroup(ownerId, groupId) {
+    async function openGroup(ownerId, groupId, chatId) {
         const request = ++generation;
         const entry = await serviceOperation(() => service.loadGroup(ownerId, groupId));
+        if (chatId !== undefined) {
+            if (!entry.group.chats.includes(chatId)) { throw new Error('This chat does not belong to the shared group.'); }
+            entry.group.chat_id = chatId;
+        }
         const [cards, transcript] = await Promise.all([
             serviceOperation(() => service.loadCharacters(ownerId, entry.group.members)),
             entry.group.chat_id ? serviceOperation(() => service.loadChat(ownerId, groupId, entry.group.chat_id)) : { metadata: {}, messages: [] },
@@ -497,6 +538,18 @@ export function createOwnershipNative({ service, native, document, window }) {
 
     function onClick(event) {
         const target = event.target;
+        const recent = target.closest?.('.recentChat.group');
+        const recentEntry = recent && entries.get(String(recent.getAttribute('data-group')));
+        if (recentEntry && recentEntry.owner.id !== service.account.id) {
+            if (target.closest('.renameChat, .deleteChat, .pinChat')) { return; }
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            void openGroup(recentEntry.owner.id, recentEntry.group.id, recent.getAttribute('data-file')).then(() => {
+                native.setActiveGroup?.(getProjectionId(recentEntry.owner.id, recentEntry.group.id));
+                native.saveSettingsDebounced?.();
+            }).catch(report);
+            return;
+        }
         const card = target.closest?.('.group_select');
         const entry = card ? entries.get(String(card.getAttribute('data-grid'))) : undefined;
         if (entry && entry.owner.id !== service.account.id) {
@@ -640,6 +693,7 @@ export function createOwnershipNative({ service, native, document, window }) {
          * Opens an owner-sourced group using native selection and rendering without initialization.
          * @param {string} ownerId Source account handle.
          * @param {string} groupId Original native group ID, never its frontend projection.
+         * @param {string} [chatId] Specific stored chat to open instead of the group's selected chat.
          * @returns {Promise<void>} Resolves after the selected transcript is displayed; failed reads reject.
          */
         openGroup,
