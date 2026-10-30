@@ -7,6 +7,7 @@ const eventNames = [
     'WORLDINFO_ENTRIES_LOADED', 'WORLDINFO_SETTINGS_UPDATED', 'WORLDINFO_UPDATED',
     'PERSONA_CHANGED', 'PERSONA_UPDATED', 'CHARACTER_EDITED', 'GROUP_UPDATED',
     'CHAT_CHANGED', 'CHAT_LOADED', 'SETTINGS_UPDATED', 'SETTINGS_LOADED',
+    'GENERATION_STARTED', 'GENERATION_AFTER_COMMANDS', 'GENERATION_STOPPED', 'GENERATION_ENDED',
 ];
 
 function qualifiedName(accountId, filename) {
@@ -232,6 +233,33 @@ test('guest books enter the native entries-loaded seam before activation, decora
     assert.deepEqual(guestCollections.personaLore, []);
 });
 
+test('native owner collection reads its selected local books before adding same-name qualified guest entries', async () => {
+    const f = fixture();
+    f.state.isOwner = true;
+    f.native.selected_world_info = ['Shared'];
+    share(f, 'viewer', 'Shared.json', book('unused owner snapshot'));
+    share(f, 'guest', 'Shared.json', book('guest persona'));
+    f.adapter.mount();
+    await assert.rejects(f.loadWorldInfo('Shared'), /ambig/i);
+    await f.emit('GENERATION_AFTER_COMMANDS');
+    const ownerBook = await f.loadWorldInfo('Shared');
+    assert.equal(ownerBook.entries[0].content, 'local collision');
+    assert.deepEqual(await f.loadWorldInfo(qualifiedName('guest', 'Shared.json')), book('guest persona'));
+    const collections = {
+        globalLore: Object.values(ownerBook.entries).map(entry => ({ ...entry, world: 'Shared' })),
+        characterLore: [], chatLore: [], personaLore: [],
+    };
+    await f.emit('WORLDINFO_ENTRIES_LOADED', collections);
+    assert.equal(collections.globalLore[0].content, 'local collision');
+    assert.equal(collections.personaLore[0].content, 'guest persona');
+    assert.equal(collections.personaLore[0].world, qualifiedName('guest', 'Shared.json'));
+    assert.deepEqual(f.native.selected_world_info, ['Shared']);
+    await assert.rejects(f.loadWorldInfo('Shared'), /ambig/i);
+    await f.emit('GENERATION_AFTER_COMMANDS');
+    await f.emit('GENERATION_STOPPED');
+    await assert.rejects(f.loadWorldInfo('Shared'), /ambig/i);
+});
+
 test('generation keeps same-name guest books separate and does not inject already loaded qualified entries twice', async () => {
     const f = fixture();
     f.state.isOwner = true;
@@ -314,6 +342,63 @@ test('native selection events and jQuery changes notify with the current rebuilt
     f.native.selected_world_info = [];
     await f.emit('WORLDINFO_SETTINGS_UPDATED');
     assert.ok(f.changes.at(-1).includes('Duplicate.json'));
+});
+
+test('projected group cards use their native source filename for additional associations', () => {
+    const f = fixture();
+    const card = f.native.characters[1];
+    card.multiplayer = { accountId: 'owner', filename: 'Disabled.png' };
+    card.avatar = 'multiplayer-character:["owner","Disabled.png"]';
+    f.native.groups[0].members[1] = card.avatar;
+    assert.ok(f.adapter.getContribution(true).includes('Disabled extra.json'));
+});
+
+test('uncached same-name local editor reads and writes stay local even with ambiguous shared names', async () => {
+    const f = fixture();
+    share(f, 'first');
+    share(f, 'second');
+    f.cache.delete('Shared');
+    f.adapter.mount();
+    const editor = f.document.querySelector('#world_editor_select');
+    const data = await f.native.$.event.dispatch.call(editor, {
+        type: 'change', target: editor, nativeHandler: () => f.loadWorldInfo('Shared'),
+    });
+    assert.equal(data.entries[0].content, 'local collision');
+    data.entries[0].content = 'local editor change';
+    await f.saveWorldInfo('Shared', data, true);
+    assert.deepEqual(f.calls.map(call => call.path), ['/api/worldinfo/get', '/api/worldinfo/edit']);
+    assert.deepEqual(f.saved, []);
+    await assert.rejects(f.loadWorldInfo('Shared'), /ambig/i);
+});
+
+test('direct native persona and auxiliary-book setters notify before debounced settings persistence', async () => {
+    const f = fixture();
+    f.state.isOwner = true;
+    f.adapter.mount();
+    f.native.world_info.charLore[1].extraBooks = ['Immediate extra'];
+    Object.assign(f.native.world_info, { charLore: f.native.world_info.charLore });
+    await Promise.resolve();
+    assert.ok(f.changes.at(-1)?.includes('Immediate extra.json'));
+    f.native.power_user.persona_description_lorebook = 'Immediate persona';
+    await Promise.resolve();
+    assert.ok(f.changes.at(-1)?.includes('Immediate persona.json'));
+    f.adapter.dispose();
+    assert.equal(f.native.power_user.persona_description_lorebook, 'Immediate persona');
+    assert.equal(Object.getOwnPropertyDescriptor(f.native.power_user, 'persona_description_lorebook').get, undefined);
+});
+
+test('a confirmed response after withdrawal does not notify the current shared chat', async () => {
+    const f = fixture();
+    share(f, 'viewer', 'Local.json');
+    f.adapter.mount();
+    let resolve;
+    f.state.response = () => new Promise(done => { resolve = done; });
+    const pending = f.post('edit', 'Local', book('saved in previous availability'));
+    await new Promise(done => setImmediate(done));
+    f.state.books = [];
+    resolve(Response.json({ ok: true }));
+    await pending;
+    assert.deepEqual(f.saved, []);
 });
 
 test('disposal restores fetch/cache/dispatch and removes native subscriptions without leaking shared reads', async () => {
