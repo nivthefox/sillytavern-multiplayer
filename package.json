@@ -1,16 +1,15 @@
 {
-    "name": "sillytavern-multiplayer-workspace",
+    "name": "sillytavern-multiplayer",
     "version": "0.0.0",
     "private": true,
     "license": "AGPL-3.0-or-later",
     "type": "module",
-    "workspaces": ["packages/plugin", "packages/addon"],
     "engines": {
         "node": ">=22"
     },
     "scripts": {
-        "test": "npm run test --workspaces",
-        "test:plugin": "npm run test --workspace @sillytavern-multiplayer/plugin",
-        "test:addon": "npm run test --workspace @sillytavern-multiplayer/addon"
+        "test": "node --test",
+        "test:plugin": "node --test 'test/plugin/**/*.test.js'",
+        "test:addon": "node --test 'test/addon/**/*.test.js'"
     }
 }

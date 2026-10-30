@@ -1,15 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
-import { exit, info, init } from '../index.js';
+import { exit, info, init } from '../../plugin/index.js';
 
-test('package entry exposes the SillyTavern plugin contract', async () => {
-    const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-    const entry = await import(new URL(`../${packageJson.main}`, import.meta.url));
-
-    assert.equal(entry.init, init);
-    assert.equal(entry.exit, exit);
+test('entry exposes the SillyTavern plugin contract', () => {
+    assert.equal(typeof init, 'function');
+    assert.equal(typeof exit, 'function');
     assert.match(info.id, /^[a-z0-9_-]+$/);
     assert.ok(info.name.length > 0);
     assert.ok(info.description.length > 0);

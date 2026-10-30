@@ -29,12 +29,14 @@ Development and tests require **Node.js 22+** and npm. Source code uses modern J
 
 ## Installation
 
-For local development, copy or symlink:
+Symlink both directories from this project into the local SillyTavern installation. From the repository root:
 
-- `packages/plugin/` → `<SillyTavern>/plugins/multiplayer/`
-- `packages/addon/` → `<SillyTavern>/public/scripts/extensions/third-party/multiplayer/`
+```sh
+ln -s "$PWD/plugin" /root/tavern/plugins/multiplayer
+ln -s "$PWD/addon" /root/tavern/public/scripts/extensions/third-party/multiplayer
+```
 
-Enable `enableServerPlugins` in SillyTavern's configuration and restart the server. Install these package directories, not the repository root.
+Adjust `/root/tavern` if SillyTavern lives elsewhere. Enable `enableServerPlugins` in SillyTavern's configuration and restart the server.
 
 The scaffold currently adds no controls, routes, or multiplayer connections.
 
@@ -45,18 +47,20 @@ npm ci
 npm test
 ```
 
-Run either package's tests separately:
+Run plugin or addon tests separately:
 
 ```sh
 npm run test:plugin
 npm run test:addon
 ```
 
-Tests use Node's built-in test runner and need no running SillyTavern or AI service. The initial suite contains three scaffold tests per package.
+Tests use Node's built-in test runner and need no running SillyTavern or AI service. The initial suite contains three scaffold tests each for the plugin and addon.
 
 ## Project layout
 
-- `packages/plugin/` — server plugin
-- `packages/addon/` — browser addon
+- `plugin/` — server plugin
+- `addon/` — browser addon
+- `test/` — plugin and addon unit tests
+- `package.json` — shared project configuration and test commands
 - `docs/brief.html` — project concept and scope
 - `docs/specs/` — server plugin, chat ownership, shared conversations, and shared lorebook specifications
