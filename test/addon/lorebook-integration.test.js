@@ -96,6 +96,9 @@ test('another tab saving an own-account shared book invalidates stale native cac
     const h = await fixture(t);
     h.native.worldInfoCache.set('PC', data('stale native cache'));
     await h.bus.join(chat);
+    h.native.worldInfoCache.set('PC', data('cached after join'));
+    await h.emit('multiplayer.lorebook.saved', { filename: 'PC.json' }, { accountId: 'guest' });
+    assert.equal(h.native.worldInfoCache.get('PC').entries[0].content, 'cached after join');
     await h.emit('multiplayer.lorebook.saved', { filename: 'PC.json' }, { accountId: 'guest', connectionId: 'another-tab' });
     assert.equal((await h.load('PC')).entries[0].content, 'local book');
     h.native.worldInfoCache.set('PC', data('current local edit'));
