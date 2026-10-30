@@ -381,6 +381,21 @@ test('confirmed local deletion cleans locally, broadcasts and republishes remain
     assert.equal(h.sends.length, count);
 });
 
+test('stale loaded associations cannot re-advertise a deleted book during another selection change', async () => {
+    const h = fixture({ accountId: 'owner' });
+    await h.session.setSelections(selections({ globalBooks: ['World'], personaBook: 'PC' }));
+    await h.session.setDiscovery({ chatMetadata: { world_info: 'World' } });
+    await h.join({ isOwner: true, lorebooks: [ref()] });
+    await h.session.deleted(owner, { filename: 'World.json' });
+    await h.session.setSelections(selections({ globalBooks: ['World'], personaBook: 'New PC' }));
+    await h.session.setDiscovery({ chatMetadata: { world_info: 'World' }, characters: [{ data: { extensions: { world: 'New' } } }] });
+    assert.deepEqual(h.sends.at(-1), contribution(['New PC.json']));
+    assert.equal(h.session.resolve('World'), undefined);
+    await h.session.setSelections(selections({ personaBook: 'New PC' }));
+    await h.session.setSelections(selections({ globalBooks: ['World'], personaBook: 'New PC' }));
+    assert.deepEqual(h.sends.at(-1), contribution(['World.json', 'New PC.json']));
+});
+
 test('unshared local deletion does not broadcast or alter contribution', async () => {
     const h = fixture();
     await h.session.setSelections(selections({ personaBook: 'PC' }));

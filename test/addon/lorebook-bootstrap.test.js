@@ -87,6 +87,19 @@ test('leaving clears shared access immediately and disposal restores bus methods
     assert.equal(f.handlers.size, 0);
 });
 
+test('authority updates during join book loading are not dropped', async () => {
+    const f = fixture();
+    let finish;
+    f.session.joined = () => new Promise(resolve => { finish = resolve; });
+    const joining = f.bus.join(chat);
+    for (let index = 0; index < 5 && !finish; index++) { await Promise.resolve(); }
+    assert.equal(typeof finish, 'function');
+    await f.emit('bus.status', { isOwner: true, ownerPresent: true });
+    finish();
+    await joining;
+    assert.deepEqual(f.calls.find(call => call[0] === 'status'), ['status', { isOwner: true, ownerPresent: true }]);
+});
+
 test('a superseded join result cannot populate the newly selected chat', async () => {
     const f = fixture();
     const pending = f.bus.join(chat);

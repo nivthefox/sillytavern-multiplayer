@@ -92,6 +92,19 @@ test('mounted owner publishes all selections and remote saved notifications refr
     assert.equal((await h.load(qualified)).entries[0].content, 'saved revision');
 });
 
+test('another tab saving an own-account shared book invalidates stale native cache without treating it as self', async t => {
+    const h = await fixture(t);
+    h.native.worldInfoCache.set('PC', data('stale native cache'));
+    await h.bus.join(chat);
+    await h.emit('multiplayer.lorebook.saved', { filename: 'PC.json' }, { accountId: 'guest', connectionId: 'another-tab' });
+    assert.equal((await h.load('PC')).entries[0].content, 'local book');
+    h.native.worldInfoCache.set('PC', data('current local edit'));
+    const before = h.requests.length;
+    await h.emit('multiplayer.lorebook.saved', { filename: 'PC.json' }, { accountId: 'guest', connectionId: 'self' });
+    assert.equal(h.requests.length, before);
+    assert.equal((await h.load('PC')).entries[0].content, 'current local edit');
+});
+
 test('rejoin refreshes native reads, disconnect retains cache, deletion and leave remove shared availability', async t => {
     const h = await fixture(t);
     await h.bus.join(chat);
