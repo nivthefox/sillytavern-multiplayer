@@ -281,6 +281,18 @@ test('late shared transcript cannot replace a newer selected chat', async () => 
     assert.deepEqual(f.native.chat, [{ mes: 'New selection' }]);
 });
 
+test('native array reload restores already loaded owner cards before the next group display', async () => {
+    const f = readingFixture();
+    await f.adapter.mount();
+    await f.adapter.openGroup('host', '7');
+    f.native.characters = [{ avatar: 'Same.png', name: 'Local' }];
+    f.native.groups = await (await f.window.fetch('/api/groups/all', { method: 'POST' })).json();
+    const remote = f.native.groups.find(group => group.id === f.native.selectedGroup);
+    assert.ok(remote);
+    assert.ok(remote.members.every(member => f.native.characters.some(card => card.avatar === member)));
+    assert.equal(f.native.characters.find(card => card.avatar === 'Same.png').name, 'Local');
+});
+
 test('native repeated listing refresh replaces arrays while preserving source projections', async () => {
     const f = readingFixture();
     await f.adapter.mount();
