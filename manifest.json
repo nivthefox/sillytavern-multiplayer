@@ -4,6 +4,7 @@
     "requires": [],
     "optional": [],
     "js": "addon/index.js",
+    "css": "addon/style.css",
     "author": "SillyTavern Multiplayer contributors",
     "version": "0.0.0"
 }
