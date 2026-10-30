@@ -391,7 +391,12 @@ test('connect: upstream-validated authenticated request reaches issuer unchanged
     assert.equal(received.body, undefined);
 });
 
-for (const issuer of [undefined, () => { throw new Error('Ticket unavailable'); }, async () => { throw new Error('Async issuance failed'); }]) {
+for (const issuer of [
+    undefined,
+    () => { throw new Error('Ticket unavailable'); },
+    async () => { throw new Error('Async issuance failed'); },
+    async () => { throw null; },
+]) {
     test(`connect: ${issuer === undefined ? 'undefined issuer' : issuer.constructor.name} failure returns 500 when invoked`, async t => {
         const f = await setup(t, issuer);
         assert.equal((await f.request('connect')).res.statusCode, 500);
