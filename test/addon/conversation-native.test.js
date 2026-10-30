@@ -264,6 +264,27 @@ test('owner reload invalidated during native prompt loading cannot apply its old
     assert.deepEqual(native.chat, [{ mes: 'ordinary' }]);
 });
 
+test('native New Chat may create its file once before bus join, but existing empty guest loads cannot', async t => {
+    const group = { id: '42', chat_id: 'old', chats: ['old'], multiplayer: { owner: 'guest', accounts: [] } };
+    const newChat = { accountId: 'guest', groupId: '42', chatId: 'new' };
+    const { adapter, window } = fixture(t, { groups: [group] }, { getCurrentChat: () => newChat, canSave: () => false });
+    let writes = 0;
+    window.fetch = async url => {
+        if (url === '/api/groups/edit') { return Response.json({}); }
+        if (url === '/api/chats/group/get') { return Response.json([]); }
+        if (url === '/api/chats/group/save') { writes++; return Response.json({ result: 'ok' }); }
+        return Response.json({}, { status: 404 });
+    };
+    adapter.mount();
+    await window.fetch('/api/groups/edit', { method: 'POST', body: JSON.stringify({ ...group, chat_id: 'new', chats: ['old', 'new'] }) });
+    const read = await window.fetch('/api/chats/group/get', { method: 'POST', body: JSON.stringify({ id: 'new' }) });
+    assert.deepEqual(await read.json(), []);
+    const options = { method: 'POST', body: JSON.stringify({ id: 'new', chat: [] }) };
+    assert.equal((await window.fetch('/api/chats/group/save', options)).ok, true);
+    assert.equal(writes, 1);
+    assert.equal((await window.fetch('/api/chats/group/save', options)).ok, false);
+});
+
 test('a normally returning native helper without a persistence response does not confirm saving', async t => {
     const { adapter } = fixture(t);
     adapter.mount();
