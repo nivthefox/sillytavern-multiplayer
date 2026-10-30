@@ -190,6 +190,35 @@ test('queue mutations preserve prepared content without triggering independent s
     assert.equal(calls.some(([name]) => name === 'save' || name === 'regex'), false);
 });
 
+test('owner reload rejects failed native HTTP reads instead of initializing a new chat', async t => {
+    const { adapter, native, window } = fixture(t);
+    native.chat.push({ mes: 'displayed' });
+    window.fetch = async () => Response.json({ error: 'failed' }, { status: 500 });
+    native.getGroupChat = async () => {
+        const response = await window.fetch('/api/chats/group/get', { method: 'POST', body: JSON.stringify({ id: identity.chatId }) });
+        if (!response.ok) { native.chat.splice(0); }
+    };
+    adapter.mount();
+    await assert.rejects(adapter.reload(identity, { isOwner: true }));
+    assert.deepEqual(native.chat, [{ mes: 'displayed' }]);
+});
+
+test('restoring an empty owner transcript clears failed in-memory changes without initialization', async t => {
+    const { adapter, native, window } = fixture(t);
+    native.chat.push({ mes: 'unsaved' });
+    window.fetch = async () => Response.json([]);
+    let initialized = false;
+    native.getGroupChat = async () => {
+        const response = await window.fetch('/api/chats/group/get', { method: 'POST', body: JSON.stringify({ id: identity.chatId }) });
+        const records = await response.json();
+        if (records.length === 0) { initialized = true; }
+    };
+    adapter.mount();
+    await adapter.reload(identity, { isOwner: true });
+    assert.equal(initialized, false);
+    assert.deepEqual(native.chat, []);
+});
+
 test('a normally returning native helper without a persistence response does not confirm saving', async t => {
     const { adapter } = fixture(t);
     adapter.mount();
