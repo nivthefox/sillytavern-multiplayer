@@ -1,3 +1,7 @@
+# Commit messages
+
+Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commit messages: `type(optional scope): description` (for example, `feat(addon): add player controls` or `docs: clarify installation`). Mark breaking changes with `!` after the type/scope or a `BREAKING CHANGE:` footer.
+
 # Specification collaboration
 
 Specification changes require agreement before editing.

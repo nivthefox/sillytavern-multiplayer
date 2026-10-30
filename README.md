@@ -6,6 +6,21 @@ The project includes a server plugin and a browser addon for accounts on the sam
 
 **Status:** workspace scaffold only. Multiplayer features are not implemented yet.
 
+## License
+
+Copyright © 2026 Kevin Kragenbrink, II.
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full terms.
+
+SPDX license identifier: `AGPL-3.0-or-later`.
+
 ## Compatibility
 
 The scaffold was developed against SillyTavern **1.18.0** (`release`, commit `b3308302e`). The supported version target is not yet confirmed, and live integration has not been tested.
