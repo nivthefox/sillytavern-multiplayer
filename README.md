@@ -71,12 +71,6 @@ Open the same shared chat in each participant’s browser. The first connected o
 
 During generation or owner disconnection, the saved conversation remains readable and drafting remains available, but shared changes pause. Reconnection reloads the saved transcript and reconciles pending changes without automatically resending them. Unsaved AI previews are removed on owner handoff, with an interruption notice when appropriate.
 
-The conversation integration is frontend-only and uses the existing plugin transport and resource routes. Ordinary chats retain their native handlers.
-
-## Development and validation
-
-Run `npm test` for the complete suite, or `npm run test:addon` for browser integration tests. Conversation tests use fake bus responses, saved-transcript fixtures, and native-interface/DOM substitutes; they need no live multi-account server or AI service.
-
 ## Updating
 
 Update the browser addon through SillyTavern's extension manager.
