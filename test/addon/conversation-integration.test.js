@@ -7,7 +7,7 @@ const id = '5ad90182-f1e2-4f6b-a143-c9d20d0b20d1';
 const chat = { accountId: 'owner', groupId: 'g', chatId: 'c' };
 
 async function fixture(t, isOwner = true) {
-    const dom = new JSDOM('<textarea id="send_textarea"></textarea><button id="send_but"></button><div id="chat"></div><button id="option_continue"></button><div class="group_member" data-chid="0"><button data-action="speak"></button></div>', { url: 'http://localhost/' });
+    const dom = new JSDOM('<textarea id="send_textarea"></textarea><button id="send_but"></button><div id="chat"></div><button id="option_continue"></button><button id="option_regenerate"></button><button class="swipe_right"></button><div class="group_member" data-chid="0"><button data-action="speak"></button></div>', { url: 'http://localhost/' });
     const events = new Map();
     const handlers = new Map();
     const sent = [];
@@ -76,6 +76,21 @@ test('mounted Continue and member-trigger controls preserve native generation ar
     h.dom.window.document.querySelector('[data-action="speak"]').click();
     await settle();
     assert.deepEqual(h.generated, [['continue', {}], ['normal', { force_chid: 0 }]]);
+});
+
+test('Regenerate preserves native group regeneration and right swipe selects native history', async t => {
+    const h = await fixture(t);
+    let regenerated = 0;
+    let swiped = 0;
+    h.native.regenerateGroup = async () => { regenerated++; };
+    h.native.swipe_right = async () => { swiped++; };
+    h.dom.window.document.querySelector('#option_regenerate').click();
+    await settle();
+    h.dom.window.document.querySelector('.swipe_right').click();
+    await settle();
+    assert.equal(regenerated, 1);
+    assert.equal(swiped, 1);
+    assert.deepEqual(h.generated, []);
 });
 
 test('mounted command processing does not add a second human turn', async t => {

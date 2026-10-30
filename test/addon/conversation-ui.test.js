@@ -228,6 +228,33 @@ test('a streamed replacement swipe temporarily replaces its existing saved messa
     assert.equal(hidden(row), false);
 });
 
+test('unsupported native move and clone controls cannot bypass shared persistence', t => {
+    const { ui, state, document } = fixture(t, { isOwner: true, accountId: 'guest' });
+    state.messages = [{ is_user: true, extra: { multiplayer: { messageId: 'mine', accountId: 'guest' } } }];
+    const row = addMessage(document, 0);
+    for (const name of ['mes_edit_copy', 'mes_edit_up', 'mes_edit_down']) {
+        const control = document.createElement('button'); control.className = name;
+        let activated = false;
+        control.addEventListener('click', () => { activated = true; });
+        row.append(control);
+        ui.refresh();
+        assert.equal(hidden(control), true);
+        control.click();
+        assert.equal(activated, false);
+    }
+});
+
+test('Guided Simple Send uses shared submission without intercepting Guided Impersonate', t => {
+    const { document, calls } = fixture(t);
+    document.querySelector('#send_textarea').value = 'assisted turn';
+    const send = document.createElement('button'); send.id = 'gg_simple_send_button'; document.body.append(send);
+    send.addEventListener('click', () => calls.push(['addonSend']));
+    send.click();
+    const impersonate = document.createElement('button'); impersonate.id = 'gg_impersonate_button'; document.body.append(impersonate);
+    impersonate.addEventListener('click', () => calls.push(['draftAssist'])); impersonate.click();
+    assert.deepEqual(calls, [['submit', 'assisted turn'], ['draftAssist']]);
+});
+
 test('dispose restores ordinary native submission handling', t => {
     const { ui, document, calls } = fixture(t);
     ui.dispose();
