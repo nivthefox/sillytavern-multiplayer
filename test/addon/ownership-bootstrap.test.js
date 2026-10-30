@@ -208,6 +208,33 @@ test('native opener establishes actual selected_group after source cards exist w
     assert.ok(f.calls.some(call => call[0] === 'nativeOpen'));
 });
 
+test('a shared group without stored chat IDs can establish native context without creating a transcript', async () => {
+    const f = readingFixture();
+    f.group.chats = [];
+    delete f.group.chat_id;
+    await f.adapter.mount();
+    await f.adapter.openGroup('host', '7');
+    assert.ok(f.native.selectedGroup);
+    assert.equal(f.calls.some(call => call[0] === 'initializeAndSave'), false);
+    assert.deepEqual(f.native.chat, []);
+});
+
+test('switching to a local native chat discards a pending shared read', async () => {
+    const f = readingFixture();
+    await f.adapter.mount();
+    await f.adapter.openGroup('host', '7');
+    let resolveRead;
+    f.service.loadChat = async () => new Promise(resolve => { resolveRead = resolve; });
+    const pending = f.adapter.openChat('host', '7', 'a');
+    await tick();
+    f.native.selectedGroup = 'local';
+    f.native.chat.splice(0, f.native.chat.length, { mes: 'Local chat' });
+    await f.native.eventSource.emit('chat', 'local-chat');
+    resolveRead({ metadata: {}, messages: [{ mes: 'Stale remote' }] });
+    await pending;
+    assert.deepEqual(f.native.chat, [{ mes: 'Local chat' }]);
+});
+
 test('native chooser search receives converted Plugin summaries and exact file IDs survive selection', async () => {
     const f = readingFixture();
     await f.adapter.mount();
