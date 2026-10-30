@@ -1,4 +1,5 @@
 .pi/
+/AGENTS.md
 node_modules/
 coverage/
 *.log
