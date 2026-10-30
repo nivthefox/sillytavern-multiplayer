@@ -21,6 +21,7 @@ function groupKey(accountId, groupId) {
  */
 export function createChatOwnership({ account, extensionSettings, saveSettings, fetch, getRequestHeaders, reportError }) {
     let pendingGroup;
+    let creation;
 
     async function request(path, options) {
         try {
@@ -45,6 +46,23 @@ export function createChatOwnership({ account, extensionSettings, saveSettings, 
             headers: getRequestHeaders(),
             body: JSON.stringify(body),
         });
+    }
+
+    async function saveCreatedGroup(model, accounts) {
+        if (!pendingGroup) {
+            if (!Array.isArray(model.members) || model.members.length === 0) {
+                throw new Error('Select at least one Character card.');
+            }
+            const created = await post('/api/groups/create', model);
+            pendingGroup = {
+                ...created,
+                multiplayer: { ...created.multiplayer, owner: account.id, accounts: [...accounts] },
+            };
+        }
+        const saved = pendingGroup;
+        await post('/api/groups/edit', saved);
+        pendingGroup = undefined;
+        return saved;
     }
 
     function characterImage(accountId, filename) {
@@ -84,20 +102,15 @@ export function createChatOwnership({ account, extensionSettings, saveSettings, 
          * @returns {Promise<object>} Complete saved native group record.
          */
         async createGroup(model, accounts = []) {
-            if (!pendingGroup) {
-                if (!Array.isArray(model.members) || model.members.length === 0) {
-                    throw new Error('Select at least one Character card.');
-                }
-                const created = await post('/api/groups/create', model);
-                pendingGroup = {
-                    ...created,
-                    multiplayer: { ...created.multiplayer, owner: account.id, accounts: [...accounts] },
-                };
+            if (creation) {
+                return creation;
             }
-            await post('/api/groups/edit', pendingGroup);
-            const saved = pendingGroup;
-            pendingGroup = undefined;
-            return saved;
+            creation = saveCreatedGroup(model, accounts);
+            try {
+                return await creation;
+            } finally {
+                creation = undefined;
+            }
         },
 
         /**
@@ -146,6 +159,11 @@ export function createChatOwnership({ account, extensionSettings, saveSettings, 
          */
         async loadChat(accountId, groupId, chatId) {
             const transcript = await get(`${groupPath(accountId, groupId)}/chats/${encodeURIComponent(chatId)}`);
+            if (!Array.isArray(transcript) || transcript.some(entry => entry === null || typeof entry !== 'object' || Array.isArray(entry))) {
+                const error = new Error('Invalid shared chat transcript.');
+                reportError(error);
+                throw error;
+            }
             const hasHeader = transcript.length > 0 && Object.hasOwn(transcript[0], 'chat_metadata');
             return {
                 metadata: hasHeader ? transcript[0].chat_metadata : {},
