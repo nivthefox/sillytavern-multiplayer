@@ -2,7 +2,7 @@
 
 A multiplayer addon for sharing a scene with friends and an AI GM in SillyTavern. Each player will speak through their own persona, while the scene owner controls AI turns and shares the group's characters and lorebooks. Everyone uses an account on the same SillyTavern server.
 
-**Still under development.** Shared groups support synchronized human turns, edits and deletions, owner-controlled AI generation, and reading while the owner is offline. Shared lorebook access is not implemented yet.
+**Still under development.** Shared groups support synchronized human turns, edits and deletions, owner-controlled AI generation, and reading while the owner is offline. Participants also have read-only access to the shared chat’s lorebooks.
 
 ## Requirements
 
@@ -72,6 +72,20 @@ Open the same shared chat in each participant’s browser. The first connected o
 For AI turns, other players’ persona descriptions come from the persona used in each player’s latest saved message. Your own persona description continues to use SillyTavern’s normal settings.
 
 During generation or owner disconnection, the saved conversation remains readable and drafting remains available, but shared changes pause. Reconnection reloads the saved transcript and reconciles pending changes without automatically resending them. Unsaved AI previews are removed on owner handoff, with an interruption notice when appropriate.
+
+## Shared lorebooks
+
+The selected owner shares their active global, chat-linked, persona, and group-character lorebooks, including books linked to disabled group members. Each guest shares their active persona’s lorebook. Guest persona entries enter the owner’s normal lorebook evaluation, including native activation rules and token budgets.
+
+**Sharing exposes complete books, including disabled entries and GM secrets.** Cross-account books are read-only and do not appear in your lorebook selector or editor. Your own books retain normal editing access. Confirmed saves refresh other viewers; confirmed deletions remove shared access. Cached books survive connection loss, and rejoining refreshes current availability.
+
+Extensions can use native `loadWorldInfo(name)` reads while the shared chat is open. A shared name takes precedence over an unrelated local book; multiple shared sources with that name report ambiguity. To select a particular source, pass `multiplayer-lorebook:` followed by a JSON array containing the account handle and native filename, for example:
+
+```js
+const book = await loadWorldInfo('multiplayer-lorebook:["alice","Character Sheet.json"]');
+```
+
+Leaving the chat removes shared access and restores normal local name resolution.
 
 ## Updating
 

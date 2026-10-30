@@ -4,6 +4,7 @@ import { createConversationNative } from './conversation-native.js';
 import { createPersonaContext } from './conversation-personas.js';
 import { createConversationSession } from './conversation-session.js';
 import { createConversationUI } from './conversation-ui.js';
+import { mountLorebooks } from './lorebook-bootstrap.js';
 
 const initializations = new WeakMap();
 
@@ -43,6 +44,7 @@ export async function mountConversations({ native, window, document, accountId, 
     let streamingActive = false;
     let lastPreview;
     let personaLoadFailed = false;
+    let lorebooks;
     const subscriptions = [];
     const report = error => window.toastr?.error(error.message, 'Multiplayer');
     const bus = suppliedBus ?? new BrowserEventBus({
@@ -91,6 +93,7 @@ export async function mountConversations({ native, window, document, accountId, 
         session = createConversationSession({
             bus, loadChat: async (chat, status) => {
                 const messages = await adapter.reload(chat, status);
+                await lorebooks?.refresh();
                 if (status.isOwner) {
                     for (const message of messages) { ensureMessageIdentity(message, native.uuidv4); }
                 }
@@ -297,6 +300,9 @@ export async function mountConversations({ native, window, document, accountId, 
         await session.generationStatus(false);
     });
     adapter.mount();
+    if (native.worldInfoCache) {
+        lorebooks = mountLorebooks({ native, window, document, accountId, bus, getCurrentChat: () => current, onError: report });
+    }
     ui.mount();
     previewObserver.observe(document.querySelector('#chat') ?? document.body, { childList: true, subtree: true, characterData: true });
     await changed();
@@ -313,18 +319,20 @@ export async function mountConversations({ native, window, document, accountId, 
             for (const [name, listener] of subscriptions) { native.eventSource.removeListener(name, listener); }
             ui.dispose();
             previewObserver.disconnect();
+            lorebooks?.dispose();
             adapter.dispose();
         },
     };
 }
 
 async function start({ window, document, loadModule }) {
-    const [script, groups, users, power, regex, timestamps, tokens, chats, personas, popup, prompts, stats, utils] = await Promise.all([
+    const [script, groups, users, power, regex, timestamps, tokens, chats, personas, popup, prompts, stats, utils, worlds] = await Promise.all([
         loadModule('/script.js'), loadModule('/scripts/group-chats.js'), loadModule('/scripts/user.js'),
         loadModule('/scripts/power-user.js'), loadModule('/scripts/extensions/regex/engine.js'),
         loadModule('/scripts/RossAscends-mods.js'), loadModule('/scripts/tokenizers.js'),
         loadModule('/scripts/chats.js'), loadModule('/scripts/personas.js'), loadModule('/scripts/popup.js'),
         loadModule('/scripts/itemized-prompts.js'), loadModule('/scripts/stats.js'), loadModule('/scripts/utils.js'),
+        loadModule('/scripts/world-info.js'),
     ]);
     const native = {
         ...script,
@@ -334,6 +342,12 @@ async function start({ window, document, loadModule }) {
         get characterId() { return script.this_chid; },
         get groups() { return groups.groups; },
         get selectedGroup() { return groups.selected_group; },
+        get selected_group() { return groups.selected_group; },
+        get world_names() { return worlds.world_names; },
+        get selected_world_info() { return worlds.selected_world_info; },
+        get world_info() { return worlds.world_info; },
+        worldInfoCache: worlds.worldInfoCache,
+        $: window.$,
         get is_group_automode_enabled() { return groups.is_group_automode_enabled; },
         get name1() { return script.name1; },
         get streamingProcessor() { return script.streamingProcessor; },
