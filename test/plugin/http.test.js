@@ -140,7 +140,8 @@ test('groups: owned native groups, implicit owner membership, and guest membersh
         { owner: { id: 'owner', name: 'owner display' }, group: f.nativeGroup },
         { owner: { id: 'owner', name: 'owner display' }, group: f.group },
     ]);
-    jsonResponse((await f.request('accountGroups', { handle: 'owner' })).res,
+    const accountRecords = jsonResponse((await f.request('accountGroups', { handle: 'owner' })).res);
+    assert.deepEqual(accountRecords.sort((a, b) => a.group.id.localeCompare(b.group.id)),
         records.filter(record => record.owner.id === 'owner'));
 });
 
@@ -322,6 +323,23 @@ for (const [route, key, directory, suffix] of [
             assert.equal(f.calls.some(([name]) => name === 'readCard'), false);
         });
     }
+}
+
+test('summaries: referenced chat traversal cannot read outside group-chat storage', async t => {
+    const f = await setup(t);
+    await f.put('owner', 'groups', 'scene.json', { ...f.group, chats: ['../outside'] });
+    await f.put('owner', 'root', 'outside.jsonl', f.transcript.map(line => JSON.stringify(line)).join('\n'));
+    assert.ok((await f.request('summaries')).res.statusCode >= 400);
+});
+
+for (const route of ['card', 'character', 'persona', 'lore']) {
+    test(`${route}: authorization precedes reading corrupt resource content`, async t => {
+        const f = await setup(t);
+        const [, directory, filename] = fileCases.find(([name]) => name === route);
+        await f.put('owner', directory, filename, '{broken');
+        assert.equal((await f.request(route, { handle: 'stranger', values: valuesFor(route) })).res.statusCode, 403);
+        assert.equal(f.calls.some(([name]) => name === 'readCard'), false);
+    });
 }
 
 test('account identifier cannot escape to a sibling account directory', async t => {
