@@ -172,6 +172,12 @@ test('shared groups retain native portrait-first card structure when native card
     assert.equal(avatar.querySelector('.multiplayer-owner-badge').title, 'Owned by Host <&>');
 });
 
+test('shared group members are loaded before native listing builds portraits and member names', async t => {
+    const f = await fixture(t);
+    const group = f.native.groups.find(group => group.name === 'Shared');
+    assert.ok(group.members.every(member => f.native.characters.some(character => character.avatar === member)));
+});
+
 test('remote group members remain available to the group but never become standalone character-list entries', async t => {
     const f = await fixture(t);
     await f.adapter.openGroup('host', '42');
