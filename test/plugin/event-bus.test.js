@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
 import { test } from 'node:test';
 
-import * as eventBusModule from '../../plugin/event-bus.js';
+import { EventBus, EventConnection } from '../../plugin/event-bus.js';
 
 const chat = { accountId: 'host', groupId: 'group', chatId: 'scene' };
 const otherChat = { ...chat, chatId: 'other' };
@@ -10,8 +10,7 @@ const eventName = 'rpg-companion.update';
 
 function setup(t, authorizeJoin = async () => {}) {
     const logs = [];
-    assert.equal(typeof eventBusModule.EventBus, 'function', 'EventBus must be an exported constructor');
-    const bus = new eventBusModule.EventBus({ authorizeJoin, logger: { error: (...args) => logs.push(args) } });
+    const bus = new EventBus({ authorizeJoin, logger: { error: (...args) => logs.push(args) } });
     t.after(() => bus.close());
     function connect(accountId = 'guest', deliver) {
         const messages = [];
@@ -19,8 +18,7 @@ function setup(t, authorizeJoin = async () => {}) {
             messages.push(structuredClone(envelope));
             deliver?.(envelope);
         });
-        assert.equal(typeof eventBusModule.EventConnection, 'function', 'EventConnection must be an exported constructor');
-        assert.ok(connection instanceof eventBusModule.EventConnection);
+        assert.ok(connection instanceof EventConnection);
         return { connection, messages, accountId };
     }
     return { bus, connect, logs };
@@ -97,11 +95,11 @@ function sortedBooks(value) {
 
 test('EventBus and EventConnection expose class prototype methods rather than per-instance closures', t => {
     const { bus, connect } = setup(t);
-    assert.ok(bus instanceof eventBusModule.EventBus);
+    assert.ok(bus instanceof EventBus);
     const { connection } = connect();
     for (const [instance, constructor, methods] of [
-        [bus, eventBusModule.EventBus, ['connect', 'on', 'send', 'close']],
-        [connection, eventBusModule.EventConnection, ['receive', 'disconnect']],
+        [bus, EventBus, ['connect', 'on', 'send', 'close']],
+        [connection, EventConnection, ['receive', 'disconnect']],
     ]) {
         for (const method of methods) {
             assert.equal(typeof constructor.prototype[method], 'function');

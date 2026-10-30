@@ -52,51 +52,177 @@ function bookKey(room) {
     return JSON.stringify(combinedBooks(room).map(book => JSON.stringify([book.accountId, book.filename])).sort());
 }
 
-/**
- * Creates the in-memory chat router independently of WebSocket transport.
- * @param {object} options Dependencies for authorization and local error reporting.
- * @param {(accountId: string, chat: object) => Promise<void>} options.authorizeJoin Checks access, throwing errors with an HTTP status on failure.
- * @param {{error: Function}} [options.logger=console] Receives isolated handler and delivery failures.
- * @returns {{connect: Function, on: Function, send: Function, close: Function}} The event bus.
- */
-export function createEventBus({ authorizeJoin, logger = console }) {
-    const connections = new Map();
-    const rooms = new Map();
-    const handlers = new Map();
-    let nextAge = 0;
-    let closed = false;
+export class EventConnection {
+    #id;
+    #receive;
+    #disconnect;
+    #pending = Promise.resolve();
+    #active = true;
 
-    function log(error) {
+    /**
+     * Creates a connection backed by injected routing operations.
+     * @param {object} options Connection identity and bus operations.
+     * @param {string} options.id Server-generated connection identity.
+     * @param {(raw: string) => Promise<void>} options.receive Processes one request.
+     * @param {() => void} options.disconnect Removes the connection from its bus.
+     */
+    constructor({ id, receive, disconnect }) {
+        this.#id = id;
+        this.#receive = receive;
+        this.#disconnect = disconnect;
+    }
+
+    /** @returns {string} The server-generated connection identity. */
+    get id() {
+        return this.#id;
+    }
+
+    /**
+     * Processes a JSON request in this connection's arrival order.
+     * @param {string} raw A serialized protocol envelope.
+     * @returns {Promise<void>} Resolves after processing, not after handler completion.
+     */
+    receive(raw) {
+        this.#pending = this.#pending.then(() => {
+            if (this.#active) {
+                return this.#receive(raw);
+            }
+        });
+        return this.#pending;
+    }
+
+    /** Removes the connection and its chat association. */
+    disconnect() {
+        if (!this.#active) {
+            return;
+        }
+        this.#active = false;
+        this.#disconnect();
+    }
+}
+
+export class EventBus {
+    #authorizeJoin;
+    #logger;
+    #connections = new Map();
+    #rooms = new Map();
+    #handlers = new Map();
+    #nextAge = 0;
+    #closed = false;
+
+    /**
+     * Injects authorization and local error reporting dependencies.
+     * @param {object} options Bus dependencies.
+     * @param {(accountId: string, chat: object) => Promise<void>} options.authorizeJoin Checks access, throwing errors with an HTTP status on failure.
+     * @param {{error: Function}} [options.logger=console] Receives isolated handler and delivery failures.
+     */
+    constructor({ authorizeJoin, logger = console }) {
+        this.#authorizeJoin = authorizeJoin;
+        this.#logger = logger;
+    }
+
+    /**
+     * Registers an authenticated transport connection, initially without a chat.
+     * @param {string} accountId The authenticated account handle.
+     * @param {(envelope: object) => void} deliver Receives independent envelope objects.
+     * @returns {EventConnection} Transport-facing connection.
+     */
+    connect(accountId, deliver) {
+        if (this.#closed) {
+            throw busError('connection_unavailable');
+        }
+        const connection = {
+            id: randomUUID(), accountId, deliver, age: this.#nextAge++, active: true,
+            room: null, status: null,
+        };
+        this.#connections.set(connection.id, connection);
+        return new EventConnection({
+            id: connection.id,
+            receive: this.#processRequest.bind(this, connection),
+            disconnect: this.#disconnect.bind(this, connection),
+        });
+    }
+
+    /**
+     * Registers an independent server handler.
+     * @param {string} eventName Namespaced event name.
+     * @param {(chat: object, sender: object|null, body: *) => *} handler Event consumer.
+     * @returns {() => void} Idempotent unsubscription for this registration only.
+     */
+    on(eventName, handler) {
+        const registrations = this.#handlers.get(eventName) ?? new Set();
+        this.#handlers.set(eventName, registrations);
+        const registration = { handler };
+        registrations.add(registration);
+        return () => {
+            registrations.delete(registration);
+            if (registrations.size === 0 && this.#handlers.get(eventName) === registrations) {
+                this.#handlers.delete(eventName);
+            }
+        };
+    }
+
+    /**
+     * Routes a server-originated message with a null sender.
+     * @param {object} chat Explicit owning account, group and chat identity.
+     * @param {string} destination Owner, all, server, or a connection ID.
+     * @param {string} eventName Namespaced event name.
+     * @param {*} body JSON payload.
+     * @returns {Promise<void>} Resolves on routing acceptance; rejects with a protocol code on failure.
+     */
+    async send(chat, destination, eventName, body) {
+        let payload;
         try {
-            logger.error(error);
+            payload = JSON.parse(JSON.stringify(body));
+        } catch {
+            throw busError('invalid_request');
+        }
+        this.#route(identityOf(chat), destination, eventName, payload);
+    }
+
+    /** Discards all connections, chat state and handler registrations. */
+    close() {
+        this.#closed = true;
+        for (const connection of this.#connections.values()) {
+            connection.active = false;
+            connection.room = null;
+        }
+        this.#connections.clear();
+        this.#rooms.clear();
+        this.#handlers.clear();
+    }
+
+    #log(error) {
+        try {
+            this.#logger.error(error);
         } catch {
             return;
         }
     }
 
-    function invoke(callback, ...args) {
+    #invoke(callback, ...args) {
         try {
-            Promise.resolve(callback(...args)).catch(log);
+            Promise.resolve(callback(...args)).catch(error => this.#log(error));
         } catch (error) {
-            log(error);
+            this.#log(error);
         }
     }
 
-    function deliver(connection, envelope) {
+    #deliver(connection, envelope) {
         if (!connection.active) {
             return;
         }
-        invoke(connection.deliver, structuredClone(envelope));
+        this.#invoke(connection.deliver, structuredClone(envelope));
     }
 
-    function broadcast(room, eventName, body) {
+    #broadcast(room, eventName, body) {
         const envelope = { op: 'event', chat: room.identity, eventName, sender: null, body };
         for (const connection of [...room.clients]) {
-            deliver(connection, envelope);
+            this.#deliver(connection, envelope);
         }
     }
 
-    function updateStatus(room) {
+    #updateStatus(room) {
         for (const connection of [...room.clients]) {
             const isOwner = room.owner === connection;
             const ownerPresent = room.owner !== null;
@@ -104,11 +230,17 @@ export function createEventBus({ authorizeJoin, logger = console }) {
                 continue;
             }
             connection.status = { isOwner, ownerPresent };
-            deliver(connection, { op: 'status', chat: room.identity, isOwner, ownerPresent });
+            this.#deliver(connection, { op: 'status', chat: room.identity, isOwner, ownerPresent });
         }
     }
 
-    function detach(connection) {
+    #disconnect(connection) {
+        connection.active = false;
+        this.#connections.delete(connection.id);
+        this.#detach(connection);
+    }
+
+    #detach(connection) {
         const room = connection.room;
         if (!room) {
             return;
@@ -123,58 +255,58 @@ export function createEventBus({ authorizeJoin, logger = console }) {
                 .sort((a, b) => a.age - b.age)[0] ?? null;
         }
         if (room.clients.size === 0) {
-            rooms.delete(chatKey(room.identity));
+            this.#rooms.delete(chatKey(room.identity));
             return;
         }
         const before = bookKey(room);
         if (![...room.clients].some(client => client.accountId === connection.accountId)) {
             room.contributions.delete(connection.accountId);
         }
-        updateStatus(room);
+        this.#updateStatus(room);
         if (wasOwner) {
-            broadcast(room, 'multiplayer.owner.changed', {});
+            this.#broadcast(room, 'multiplayer.owner.changed', {});
         }
         if (before !== bookKey(room)) {
-            broadcast(room, 'multiplayer.lorebooks.changed', { lorebooks: combinedBooks(room) });
+            this.#broadcast(room, 'multiplayer.lorebooks.changed', { lorebooks: combinedBooks(room) });
         }
     }
 
-    async function join(connection, identity) {
+    async #join(connection, identity) {
         try {
-            await authorizeJoin(connection.accountId, structuredClone(identity));
+            await this.#authorizeJoin(connection.accountId, structuredClone(identity));
         } catch (error) {
             const code = { 403: 'forbidden', 404: 'not_found' }[error?.status] ?? 'internal_error';
             if (code === 'internal_error') {
-                log(error);
+                this.#log(error);
             }
             throw busError(code);
         }
-        if (!connection.active || closed) {
+        if (!connection.active || this.#closed) {
             throw busError('connection_unavailable');
         }
         const key = chatKey(identity);
         if (connection.room && chatKey(connection.room.identity) === key) {
-            return joinData(connection);
+            return this.#joinData(connection);
         }
-        detach(connection);
-        if (!connection.active || closed) {
+        this.#detach(connection);
+        if (!connection.active || this.#closed) {
             throw busError('connection_unavailable');
         }
-        let room = rooms.get(key);
+        let room = this.#rooms.get(key);
         if (!room) {
             room = { identity, clients: new Set(), owner: null, contributions: new Map() };
-            rooms.set(key, room);
+            this.#rooms.set(key, room);
         }
         connection.room = room;
         room.clients.add(connection);
         if (!room.owner && connection.accountId === identity.accountId) {
             room.owner = connection;
         }
-        updateStatus(room);
-        return joinData(connection);
+        this.#updateStatus(room);
+        return this.#joinData(connection);
     }
 
-    function joinData(connection) {
+    #joinData(connection) {
         return {
             isOwner: connection.room.owner === connection,
             ownerPresent: connection.room.owner !== null,
@@ -182,7 +314,7 @@ export function createEventBus({ authorizeJoin, logger = console }) {
         };
     }
 
-    function contribute(room, connection, body) {
+    #contribute(room, connection, body) {
         if (connection.accountId === room.identity.accountId && room.owner !== connection) {
             return;
         }
@@ -197,13 +329,13 @@ export function createEventBus({ authorizeJoin, logger = console }) {
             room.contributions.set(connection.accountId, filenames);
         }
         if (before !== bookKey(room)) {
-            broadcast(room, 'multiplayer.lorebooks.changed', { lorebooks: combinedBooks(room) });
+            this.#broadcast(room, 'multiplayer.lorebooks.changed', { lorebooks: combinedBooks(room) });
         }
     }
 
-    function route(identity, destination, eventName, body, source = null) {
+    #route(identity, destination, eventName, body, source = null) {
         validateEvent(destination, eventName, source !== null);
-        const room = rooms.get(chatKey(identity));
+        const room = this.#rooms.get(chatKey(identity));
         let recipients;
         if (destination === 'owner') {
             if (!room?.owner) {
@@ -216,7 +348,7 @@ export function createEventBus({ authorizeJoin, logger = console }) {
             }
             recipients = destination === 'all' ? [...room.clients] : [];
         } else {
-            const target = connections.get(destination);
+            const target = this.#connections.get(destination);
             if (!target?.active || !room || target.room !== room) {
                 throw busError('connection_unavailable');
             }
@@ -225,21 +357,21 @@ export function createEventBus({ authorizeJoin, logger = console }) {
         const sender = source ? { accountId: source.accountId, connectionId: source.id } : null;
         if (destination === 'server') {
             if (eventName === 'multiplayer.lorebooks.set' && source) {
-                contribute(room, source, body);
+                this.#contribute(room, source, body);
             }
-            for (const registration of [...(handlers.get(eventName) ?? [])]) {
-                invoke(registration.handler, structuredClone(identity), structuredClone(sender), structuredClone(body));
+            for (const registration of [...(this.#handlers.get(eventName) ?? [])]) {
+                this.#invoke(registration.handler, structuredClone(identity), structuredClone(sender), structuredClone(body));
             }
             return;
         }
         const envelope = { op: 'event', chat: identity, eventName, sender, body };
         for (const recipient of recipients) {
-            deliver(recipient, envelope);
+            this.#deliver(recipient, envelope);
         }
     }
 
-    async function processRequest(connection, raw) {
-        if (!connection.active || closed) {
+    async #processRequest(connection, raw) {
+        if (!connection.active || this.#closed) {
             return;
         }
         let requestId = null;
@@ -259,9 +391,9 @@ export function createEventBus({ authorizeJoin, logger = console }) {
             }
             let data = null;
             if (request.op === 'join') {
-                data = await join(connection, identityOf(request));
+                data = await this.#join(connection, identityOf(request));
             } else if (request.op === 'leave') {
-                detach(connection);
+                this.#detach(connection);
             } else if (request.op === 'send') {
                 validateEvent(request.destination, request.eventName, true);
                 if (!Object.hasOwn(request, 'body')) {
@@ -270,100 +402,17 @@ export function createEventBus({ authorizeJoin, logger = console }) {
                 if (!connection.room) {
                     throw busError('not_joined');
                 }
-                route(connection.room.identity, request.destination, request.eventName, request.body, connection);
+                this.#route(connection.room.identity, request.destination, request.eventName, request.body, connection);
             } else {
                 throw busError('invalid_request');
             }
-            deliver(connection, { op: 'result', requestId, ok: true, data });
+            this.#deliver(connection, { op: 'result', requestId, ok: true, data });
         } catch (error) {
             const code = Object.hasOwn(errorMessages, error?.code) ? error.code : 'internal_error';
             if (code === 'internal_error') {
-                log(error);
+                this.#log(error);
             }
-            deliver(connection, { op: 'result', requestId, ok: false, error: { code, message: errorMessages[code] } });
+            this.#deliver(connection, { op: 'result', requestId, ok: false, error: { code, message: errorMessages[code] } });
         }
     }
-
-    return {
-        /**
-         * Registers an authenticated transport connection, initially without a chat.
-         * @param {string} accountId The authenticated account handle.
-         * @param {(envelope: object) => void} deliver Receives independent envelope objects.
-         * @returns {{id: string, receive: Function, disconnect: Function}} Transport-facing connection.
-         */
-        connect(accountId, deliver) {
-            if (closed) {
-                throw busError('connection_unavailable');
-            }
-            const connection = {
-                id: randomUUID(), accountId, deliver, age: nextAge++, active: true,
-                room: null, status: null, pending: Promise.resolve(),
-            };
-            connections.set(connection.id, connection);
-            return {
-                id: connection.id,
-                /**
-                 * Processes a JSON request in this connection's arrival order.
-                 * @param {string} raw A serialized protocol envelope.
-                 * @returns {Promise<void>} Resolves after processing, not after handler completion.
-                 */
-                receive(raw) {
-                    connection.pending = connection.pending.then(() => processRequest(connection, raw));
-                    return connection.pending;
-                },
-                /** Removes the connection and its chat association. */
-                disconnect() {
-                    connection.active = false;
-                    connections.delete(connection.id);
-                    detach(connection);
-                },
-            };
-        },
-        /**
-         * Registers an independent server handler.
-         * @param {string} eventName Namespaced event name.
-         * @param {(chat: object, sender: object|null, body: *) => *} handler Event consumer.
-         * @returns {() => void} Idempotent unsubscription for this registration only.
-         */
-        on(eventName, handler) {
-            const registrations = handlers.get(eventName) ?? new Set();
-            handlers.set(eventName, registrations);
-            const registration = { handler };
-            registrations.add(registration);
-            return () => {
-                registrations.delete(registration);
-                if (registrations.size === 0 && handlers.get(eventName) === registrations) {
-                    handlers.delete(eventName);
-                }
-            };
-        },
-        /**
-         * Routes a server-originated message with a null sender.
-         * @param {object} chat Explicit owning account, group and chat identity.
-         * @param {string} destination Owner, all, server, or a connection ID.
-         * @param {string} eventName Namespaced event name.
-         * @param {*} body JSON payload.
-         * @returns {Promise<void>} Resolves on routing acceptance; rejects with a protocol code on failure.
-         */
-        async send(chat, destination, eventName, body) {
-            let payload;
-            try {
-                payload = JSON.parse(JSON.stringify(body));
-            } catch {
-                throw busError('invalid_request');
-            }
-            route(identityOf(chat), destination, eventName, payload);
-        },
-        /** Discards all connections, chat state and handler registrations. */
-        close() {
-            closed = true;
-            for (const connection of connections.values()) {
-                connection.active = false;
-                connection.room = null;
-            }
-            connections.clear();
-            rooms.clear();
-            handlers.clear();
-        },
-    };
 }

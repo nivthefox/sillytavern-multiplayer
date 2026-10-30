@@ -1,5 +1,5 @@
-import { createEventBus } from './event-bus.js';
-import { createEventTransport } from './event-transport.js';
+import { EventBus } from './event-bus.js';
+import { EventTransport } from './event-transport.js';
 import { registerHttpRoutes } from './http.js';
 import { loadNativeHost } from './native-host.js';
 import { Resources } from './resources.js';
@@ -23,16 +23,16 @@ let runtime;
 export async function init(router, { host, issueTicket } = {}) {
     await exit();
     let resources;
-    const bus = createEventBus({
+    const bus = new EventBus({
         async authorizeJoin(accountId, chat) {
             resources ??= new Resources(host ?? await loadNativeHost());
             await resources.authorizeChat(accountId, chat);
         },
     });
-    const transport = createEventTransport({ bus });
+    const transport = new EventTransport({ bus });
     runtime = { bus, transport };
     router.get('/status', (_request, response) => response.json({ plugin: info.id }));
-    registerHttpRoutes(router, { host, issueTicket: issueTicket ?? transport.issueTicket });
+    registerHttpRoutes(router, { host, issueTicket: issueTicket ?? (request => transport.issueTicket(request)) });
 }
 
 /**
