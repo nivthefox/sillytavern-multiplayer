@@ -58,7 +58,13 @@ async function fixture(t, transcriptStatus = 200) {
     const native = {
         groups: [], characters: [], chat: [], selectedGroup: null, default_avatar: '/img/ai4.png',
         eventSource: events, event_types: { CHAT_CHANGED: 'chat', CHARACTER_PAGE_LOADED: 'page' },
-        clearChat: async () => { native.chat.splice(0); document.getElementById('chat').replaceChildren(); },
+        clearChat: async ({ clearData = false } = {}) => {
+            document.getElementById('chat').replaceChildren();
+            await Promise.resolve();
+            if (clearData) {
+                native.chat.splice(0);
+            }
+        },
         updateChatMetadata: metadata => { native.metadata = metadata; },
         select_group_chats(id) { events.emit('groupSelected', { detail: { id, group: native.groups.find(group => group.id === id) } }); },
         getRequestHeaders: () => ({}),
@@ -190,10 +196,13 @@ test('a read paused in native clearChat cannot overwrite a newer shared selectio
     await f.adapter.openGroup('host', '42');
     const clear = f.native.clearChat;
     let release;
-    f.native.clearChat = async () => {
-        await clear();
+    f.native.clearChat = async ({ clearData = false } = {}) => {
+        f.document.getElementById('chat').replaceChildren();
         f.native.clearChat = clear;
         await new Promise(resolve => { release = resolve; });
+        if (clearData) {
+            f.native.chat.splice(0);
+        }
     };
     const previous = f.adapter.openChat('host', '42', 'first');
     await settle();
