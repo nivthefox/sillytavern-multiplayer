@@ -76,6 +76,20 @@ async function fixture(t, transcriptStatus = 200) {
                 chat.append(element);
             }
         },
+        async displayPastChats() {
+            const response = await dom.window.fetch('/api/chats/search', { method: 'POST', body: JSON.stringify({ group_id: native.selectedGroup, query: '' }) });
+            const container = document.getElementById('select_chat_div');
+            container.replaceChildren();
+            for (const summary of await response.json()) {
+                const choice = document.createElement('div');
+                choice.className = 'select_chat_block';
+                choice.setAttribute('file_name', summary.file_name);
+                const label = document.createElement('span');
+                label.textContent = summary.preview_message;
+                choice.append(label);
+                container.append(choice);
+            }
+        },
         async openGroupById(id) {
             native.selectedGroup = id;
             const group = native.groups.find(group => group.id === id);
@@ -117,13 +131,9 @@ test('guest card and stored-chat DOM clicks replace native handlers and load the
     assert.equal(f.native.chat[0]?.mes, 'First', 'card click must reach shared loading');
     assert.equal(nativeClicks, 0, 'native delegated opener must not also run');
     assert.ok(f.native.selectedGroup);
-    const chatChoice = f.document.createElement('div');
-    chatChoice.className = 'select_chat_block';
-    chatChoice.setAttribute('file_name', 'second.jsonl');
-    const child = f.document.createElement('span');
-    child.textContent = 'Second';
-    chatChoice.append(child);
-    f.document.getElementById('select_chat_div').append(chatChoice);
+    await f.adapter.showChats('host', '42');
+    const child = f.document.querySelector('#select_chat_div .select_chat_block span');
+    assert.ok(child, 'native chooser must render the Plugin summary');
     child.dispatchEvent(new f.dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
     await settle();
     assert.equal(f.native.chat[0]?.mes, 'Second');
