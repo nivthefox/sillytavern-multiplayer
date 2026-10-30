@@ -254,10 +254,40 @@ test('native owner collection reads its selected local books before adding same-
     assert.equal(collections.personaLore[0].content, 'guest persona');
     assert.equal(collections.personaLore[0].world, qualifiedName('guest', 'Shared.json'));
     assert.deepEqual(f.native.selected_world_info, ['Shared']);
+    const secondScan = await f.loadWorldInfo('Shared');
+    assert.equal(secondScan.entries[0].content, 'local collision');
+    await f.emit('GENERATION_ENDED');
     await assert.rejects(f.loadWorldInfo('Shared'), /ambig/i);
     await f.emit('GENERATION_AFTER_COMMANDS');
     await f.emit('GENERATION_STOPPED');
     await assert.rejects(f.loadWorldInfo('Shared'), /ambig/i);
+});
+
+test('command-only generation startup never bypasses shared-name ambiguity', async () => {
+    const f = fixture();
+    f.state.isOwner = true;
+    f.native.selected_world_info = ['Shared'];
+    share(f, 'viewer');
+    share(f, 'guest');
+    f.adapter.mount();
+    await f.emit('GENERATION_STARTED', 'normal');
+    await assert.rejects(f.loadWorldInfo('Shared'), /ambig/i);
+    await assert.rejects(f.loadWorldInfo('Shared'), /ambig/i);
+});
+
+test('parsed shared HTTP reads remain read-only and cannot overwrite a colliding local book', async () => {
+    const f = fixture();
+    share(f);
+    f.adapter.mount();
+    const response = await f.post('get', 'Shared');
+    const contents = await response.json();
+    contents.entries[0].content = 'attempted shared edit';
+    await assert.rejects(f.saveWorldInfo('Shared', contents, true), /read.only/i);
+    const clonedResponse = (await f.post('get', 'Shared')).clone();
+    await assert.rejects(f.saveWorldInfo('Shared', await clonedResponse.json(), true), /read.only/i);
+    assert.equal(f.calls.length, 0);
+    f.state.books = [];
+    assert.equal((await f.loadWorldInfo('Shared')).entries[0].content, 'local collision');
 });
 
 test('generation keeps same-name guest books separate and does not inject already loaded qualified entries twice', async () => {
