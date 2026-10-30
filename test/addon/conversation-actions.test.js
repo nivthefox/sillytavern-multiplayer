@@ -179,6 +179,17 @@ test('revoked authority cannot apply queued changes or begin generation', async 
     assert.deepEqual(h.operations, []);
 });
 
+test('confirmed failure is reported even when restoring disk state fails, and later changes remain blocked', async () => {
+    const h = setup([], 'failed');
+    h.native.loadSaved = async () => { throw new Error('Read unavailable'); };
+    await assert.rejects(h.queue.enqueue('send', { message: message(), iteration: 0 }, sender), /Read unavailable/);
+    assert.equal(h.events[0]?.[1], 'multiplayer.message.send_failure');
+    const next = message(); next.extra.multiplayer.messageId = '121c9cf0-9998-4e80-a831-0d474a99d2fa';
+    await assert.rejects(h.queue.enqueue('send', { message: next, iteration: 0 }, sender), /Read unavailable/);
+    assert.equal(h.messages().length, 1);
+    assert.equal(h.operations.filter(operation => operation === 'save').length, 1);
+});
+
 test('edit confirmation matches current text, never historical swipe', () => {
     assert.equal(typeof api.confirmAction, 'function');
     const target = message(); target.swipes = ['old', target.mes];

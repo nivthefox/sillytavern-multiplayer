@@ -14,6 +14,7 @@ async function fixture(t, isOwner = true) {
     const saves = [];
     const generated = [];
     let saved = [];
+    let failSave = false;
     const native = {
         groups: [{ id: 'g', chat_id: 'c', multiplayer: { owner: 'owner', accounts: ['guest'] } }], selectedGroup: 'g', chat: [], chat_metadata: {},
         event_types: { CHAT_CHANGED: 'changed', MESSAGE_RECEIVED: 'received', STREAM_TOKEN_RECEIVED: 'stream', GROUP_WRAPPER_STARTED: 'started', GROUP_WRAPPER_FINISHED: 'finished' },
@@ -29,6 +30,7 @@ async function fixture(t, isOwner = true) {
         async Generate(...args) { generated.push(args); }, stopGeneration() {}, shouldSendOnEnter: () => true, isPopupOpen: () => false,
     };
     dom.window.fetch = async (url, options) => {
+        if (url === '/api/chats/group/save' && failSave) { failSave = false; return Response.json({ error: 'save failed' }, { status: 500 }); }
         if (url === '/api/chats/group/save') { saves.push(JSON.parse(options.body)); saved = structuredClone(native.chat); return Response.json({ result: 'ok' }); }
         return Response.json(saved);
     };
@@ -39,7 +41,7 @@ async function fixture(t, isOwner = true) {
     };
     const integration = await mountConversations({ native, window: dom.window, document: dom.window.document, accountId: isOwner ? 'owner' : 'guest', bus });
     t.after(async () => { await integration.dispose(); dom.window.close(); });
-    return { integration, native, dom, sent, saves, generated, async emit(name, body, sender = { accountId: 'guest', connectionId: 'tab' }) { for (const listener of handlers.get(name) ?? []) { await listener(chat, sender, body); } } };
+    return { integration, native, dom, sent, saves, generated, failNextSave() { failSave = true; }, async emit(name, body, sender = { accountId: 'guest', connectionId: 'tab' }) { for (const listener of handlers.get(name) ?? []) { await listener(chat, sender, body); } } };
 }
 
 async function settle() { for (let i = 0; i < 5; i++) { await new Promise(resolve => setImmediate(resolve)); } }
@@ -107,6 +109,18 @@ test('a guest reload arriving after leaving cannot replace an ordinary chat', as
     finish(Response.json([{ mes: 'old shared chat' }]));
     await reload;
     assert.deepEqual(h.native.chat, [{ mes: 'ordinary' }]);
+});
+
+test('failed native generation is restored before a later player action can save it', async t => {
+    const h = await fixture(t);
+    h.native.chat.push({ mes: 'failed AI response', is_user: false, extra: {} });
+    h.failNextSave();
+    await h.native.saveChatConditional();
+    assert.deepEqual(h.native.chat, []);
+    h.dom.window.document.querySelector('#send_textarea').value = 'later turn';
+    h.dom.window.document.querySelector('#send_but').click();
+    await settle();
+    assert.deepEqual(h.saves.at(-1).chat.map(message => message.mes), ['later turn']);
 });
 
 test('remote human turn is attributed and saved through the mounted owner queue', async t => {
