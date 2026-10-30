@@ -68,6 +68,7 @@ test('guest and local actions share one save-completion queue', async () => {
     const second = h.queue.enqueue('send', { message: secondMessage, iteration: 0 });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(h.messages().length, 1);
+    assert.equal(h.operations.includes('render'), false, 'unsaved native messages must not duplicate pending overlays');
     release();
     await first;
     await new Promise(resolve => setImmediate(resolve));

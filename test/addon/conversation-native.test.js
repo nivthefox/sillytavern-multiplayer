@@ -12,7 +12,7 @@ const integration = await import(moduleUrl).catch(error => {
 const messageId = '11111111-1111-4111-8111-111111111111';
 const identity = { accountId: 'host', groupId: '42', chatId: 'scene / one' };
 
-function fixture(t, overrides = {}) {
+function fixture(t, overrides = {}, options = {}) {
     assert.equal(typeof integration.createConversationNative, 'function');
     const dom = new JSDOM('<textarea id="send_textarea">new draft</textarea><div id="chat"></div>', { url: 'http://localhost/' });
     t.after(() => dom.window.close());
@@ -48,7 +48,7 @@ function fixture(t, overrides = {}) {
         calls.push(['fetch', String(url)]);
         return Response.json([]);
     };
-    const adapter = integration.createConversationNative({ native, window: dom.window, document: dom.window.document, accountId: 'guest', randomUUID: () => messageId });
+    const adapter = integration.createConversationNative({ native, window: dom.window, document: dom.window.document, accountId: 'guest', randomUUID: () => messageId, ...options });
     t.after(() => adapter.dispose());
     return { adapter, native, calls, window: dom.window, document: dom.window.document };
 }
@@ -109,7 +109,8 @@ for (const transcript of [[], [{ chat_metadata: { world_info: 'Book' } }], [{ ch
             calls.push(['fetch', String(url)]);
             return Response.json(transcript);
         };
-        await adapter.reload(identity, { isOwner: false });
+        const messages = await adapter.reload(identity, { isOwner: false });
+        assert.deepEqual(messages, native.chat);
         assert.equal(document.querySelector('#send_textarea').value, 'new draft');
         assert.deepEqual(native.chat, transcript.filter(record => !('chat_metadata' in record)));
         assert.ok(calls.some(([name, url]) => name === 'fetch' && url === '/api/plugins/multiplayer/chats/host/groups/42/chats/scene%20%2F%20one'));
@@ -154,6 +155,40 @@ for (const [responseStatus, expected] of [[200, 'saved'], [500, 'failed'], [null
         assert.equal((await adapter.save()).status, expected);
     });
 }
+
+test('external generation saves notify only after a successful native response', async t => {
+    const saved = [];
+    const { adapter, window } = fixture(t, {}, { onSave: outcome => saved.push(outcome) });
+    window.fetch = async () => Response.json({ result: 'ok' });
+    adapter.mount();
+    await window.fetch('/api/chats/group/save', { method: 'POST' });
+    assert.deepEqual(saved, [{ status: 'saved' }]);
+});
+
+test('authority guard blocks native shared saves before persistence', async t => {
+    const { adapter, window } = fixture(t, {}, { canSave: () => false });
+    let writes = 0;
+    window.fetch = async () => { writes++; return Response.json({ result: 'ok' }); };
+    adapter.mount();
+    const response = await window.fetch('/api/chats/group/save', { method: 'POST' });
+    assert.equal(response.ok, false);
+    assert.equal(writes, 0);
+});
+
+test('queue mutations preserve prepared content without triggering independent saves', async t => {
+    const { adapter, native, calls } = fixture(t);
+    const message = { mes: 'prepared {{user}}', name: 'Other PC', is_user: true, extra: { multiplayer: { messageId }, extension: { value: 1 } } };
+    await adapter.insertMessage(message);
+    assert.deepEqual(adapter.getMessages(), [message]);
+    assert.notEqual(native.chat[0].extra, message.extra);
+    await adapter.insertMessage({ mes: 'AI', is_user: false });
+    await adapter.editMessage(1, 'revised AI');
+    assert.equal(native.chat[1].mes, 'revised AI');
+    assert.equal(native.chat[1].swipes, undefined);
+    await adapter.deleteMessage(0, { bulk: false });
+    assert.deepEqual(native.chat, [{ mes: 'revised AI', is_user: false }]);
+    assert.equal(calls.some(([name]) => name === 'save' || name === 'regex'), false);
+});
 
 test('a normally returning native helper without a persistence response does not confirm saving', async t => {
     const { adapter } = fixture(t);

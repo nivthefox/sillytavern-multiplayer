@@ -155,6 +155,65 @@ test('owner cannot edit another account player message but can delete it', t => 
     assert.equal(hidden(element.querySelector('.mes_edit_delete')), false);
 });
 
+test('pending turn is separate, dashed, labeled and non-interactive without replacing draft', t => {
+    const { ui, state, document } = fixture(t);
+    document.querySelector('#send_textarea').value = 'next draft';
+    state.pending = [{ id: 'pending-1', type: 'send', status: 'pending', body: { message: { mes: '<script>draft</script>', name: 'PC', extra: { multiplayer: { messageId: 'one' } } }, iteration: 0 } }];
+    ui.refresh();
+    const pending = document.querySelector('[data-multiplayer-pending="pending-1"]');
+    assert.ok(pending);
+    assert.match(pending.textContent, /Saving…/);
+    assert.match(pending.textContent, /<script>draft<\/script>/);
+    assert.equal(pending.querySelector('script'), null);
+    assert.equal(pending.style.borderStyle, 'dashed');
+    assert.equal(pending.querySelectorAll('button:not(:disabled)').length, 0);
+    assert.deepEqual(state.messages, []);
+    assert.equal(document.querySelector('#send_textarea').value, 'next draft');
+});
+
+test('failed edit keeps attempted text and Retry/Discard forward opaque pending id without changing draft', t => {
+    const { ui, state, document, calls } = fixture(t);
+    state.messages = [{ mes: 'saved', is_user: true, extra: { multiplayer: { messageId: 'one', accountId: 'guest' } } }];
+    state.pending = [{ id: 'edit-attempt', type: 'edit', status: 'failed', reason: 'Write failed', body: { messageId: 'one', text: 'attempt', iteration: 0 } }];
+    document.querySelector('#send_textarea').value = 'next draft';
+    ui.refresh();
+    const pending = document.querySelector('[data-multiplayer-pending="edit-attempt"]');
+    assert.match(pending.textContent, /attempt/);
+    assert.match(pending.textContent, /Not saved/);
+    assert.match(pending.textContent, /Write failed/);
+    const buttons = [...pending.querySelectorAll('button')];
+    buttons.find(button => button.textContent === 'Retry').click();
+    buttons.find(button => button.textContent === 'Discard').click();
+    assert.deepEqual(calls, [['retry', 'edit-attempt'], ['discard', 'edit-attempt']]);
+    assert.equal(document.querySelector('#send_textarea').value, 'next draft');
+    assert.equal(state.messages[0].mes, 'saved');
+});
+
+test('failed deletion retains saved content and clearing overlay restores saved display', t => {
+    const { ui, state, document } = fixture(t);
+    state.messages = [{ mes: 'do not lose me', extra: { multiplayer: { messageId: 'one' } } }];
+    state.pending = [{ id: 'delete-attempt', type: 'delete', status: 'failed', body: { messageId: 'one', iteration: 0 } }];
+    ui.refresh();
+    assert.match(document.querySelector('[data-multiplayer-pending]').textContent, /do not lose me/);
+    state.pending = [];
+    ui.refresh();
+    assert.equal(document.querySelector('[data-multiplayer-pending]'), null);
+    assert.equal(state.messages[0].mes, 'do not lose me');
+});
+
+test('AI preview updates replace one provisional display and saved identity suppresses duplication', t => {
+    const { ui, state, document } = fixture(t);
+    state.previews = [{ messageId: 'ai-one', name: 'GM', text: 'first', force_avatar: '/npc.png' }];
+    ui.refresh();
+    state.previews[0].text = 'first second';
+    ui.refresh();
+    assert.equal(document.querySelectorAll('[data-multiplayer-preview="ai-one"]').length, 1);
+    assert.match(document.querySelector('[data-multiplayer-preview]').textContent, /first second/);
+    state.messages = [{ mes: 'saved', extra: { multiplayer: { messageId: 'ai-one' } } }];
+    ui.refresh();
+    assert.equal(document.querySelector('[data-multiplayer-preview]'), null);
+});
+
 test('dispose restores ordinary native submission handling', t => {
     const { ui, document, calls } = fixture(t);
     ui.dispose();

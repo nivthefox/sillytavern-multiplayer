@@ -265,6 +265,66 @@ test('owner publishes generation boundaries and responds to status requests with
     assert.equal(h.loads.length, 1);
 });
 
+test('local failure matches the current attempt and local persisted messages confirm it', async () => {
+    const h = await open({ isOwner: true });
+    const body = { message: message(), iteration: 0 };
+    const id = await h.session.submit('send', body);
+    h.session.localFailure('send', body, 'Disk full');
+    assert.equal(h.session.getState().pending[0].reason, 'Disk full');
+    await h.session.retry(id);
+    h.session.localFailure('send', body, 'Old failure');
+    assert.equal(h.session.getState().pending[0].status, 'pending');
+    h.session.localSaved([message()]);
+    assert.deepEqual(h.session.getState().pending, []);
+    assert.deepEqual(h.session.getState().messages, [message()]);
+    assert.deepEqual(h.sends, []);
+});
+
+test('join status emitted before join resolves does not duplicate load or status request', async () => {
+    const h = fixture();
+    const join = h.bus.join;
+    h.bus.join = async identity => {
+        const result = await join(identity);
+        await h.emit('bus.status', result, null);
+        return result;
+    };
+    await h.session.open(chat);
+    assert.equal(h.loads.length, 1);
+    assert.deepEqual(h.sends, [['owner', 'multiplayer.generation.status_request', {}]]);
+});
+
+test('native local callbacks after authority loss cannot replace the retained transcript', async () => {
+    const h = await open({ isOwner: true, messages: [message()] });
+    await h.emit('bus.disconnected', null, null, null);
+    h.session.localSaved([message('Stale work')]);
+    assert.deepEqual(h.session.getState().messages, [message()]);
+    await assert.rejects(() => h.session.saved());
+    await assert.rejects(() => h.session.generationStatus(true));
+    assert.deepEqual(h.sends, []);
+});
+
+test('a reload finishing after close cannot restore the previous transcript', async () => {
+    let resolveLoad;
+    let calls = 0;
+    const h = fixture();
+    const session = createConversationSession({
+        bus: h.bus,
+        loadChat: () => new Promise(resolve => { resolveLoad = resolve; }),
+        render: () => { calls++; },
+        onAction() {},
+        stopAuthority() {},
+    });
+    const opening = session.open(chat);
+    await new Promise(resolve => setImmediate(resolve));
+    await session.close();
+    const callsAfterClose = calls;
+    resolveLoad([message()]);
+    await opening;
+    assert.equal(calls, callsAfterClose);
+    assert.deepEqual(session.getState().messages, []);
+    assert.deepEqual(h.sends, []);
+});
+
 test('closed controller unsubscribes and ignores later events', async () => {
     const h = await open();
     await h.session.close();
