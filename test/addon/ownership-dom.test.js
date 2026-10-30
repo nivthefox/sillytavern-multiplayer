@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { EventEmitter } from 'node:events';
 import { JSDOM } from 'jsdom';
 import { createChatOwnership } from '../../addon/chat-ownership.js';
 
@@ -23,6 +24,8 @@ async function fixture(t, transcriptStatus = 200) {
     const { document } = dom.window;
     const calls = [];
     const errors = [];
+    const events = new EventEmitter();
+    let discoveryStatus = 200;
     const envelope = { owner: { id: 'host', name: 'Host <&>' }, group: { id: '42', name: 'Shared', members: ['NPC.png'], disabled_members: [], chats: ['first', 'second'], chat_id: 'first', multiplayer: { owner: 'host', accounts: ['guest'] } } };
     const fetch = async (url, options) => {
         calls.push([String(url), options]);
@@ -34,7 +37,7 @@ async function fixture(t, transcriptStatus = 200) {
             return Response.json([]);
         }
         if (path === '/api/plugins/multiplayer/chats') {
-            return Response.json([envelope]);
+            return Response.json([envelope], { status: discoveryStatus });
         }
         if (path.endsWith('/card')) {
             return Response.json({ name: 'NPC', data: { name: 'NPC' } });
@@ -54,9 +57,10 @@ async function fixture(t, transcriptStatus = 200) {
     const service = createChatOwnership({ account: { id: 'guest', name: 'Guest', avatar: null }, extensionSettings: {}, saveSettings() {}, getRequestHeaders: () => ({}), fetch, reportError: error => errors.push(error) });
     const native = {
         groups: [], characters: [], chat: [], selectedGroup: null, default_avatar: '/img/ai4.png',
+        eventSource: events, event_types: { CHAT_CHANGED: 'chat', CHARACTER_PAGE_LOADED: 'page' },
         clearChat: async () => { native.chat.splice(0); document.getElementById('chat').replaceChildren(); },
         updateChatMetadata: metadata => { native.metadata = metadata; },
-        select_group_chats() {},
+        select_group_chats(id) { events.emit('groupSelected', { detail: { id, group: native.groups.find(group => group.id === id) } }); },
         getRequestHeaders: () => ({}),
         reportError: error => errors.push(error),
         async printMessages() {
@@ -91,6 +95,7 @@ async function fixture(t, transcriptStatus = 200) {
             }
         },
         async openGroupById(id) {
+            native.select_group_chats(id);
             native.selectedGroup = id;
             const group = native.groups.find(group => group.id === id);
             await native.clearChat();
@@ -104,6 +109,7 @@ async function fixture(t, transcriptStatus = 200) {
             }
             native.chat.push(...data);
             await native.printMessages();
+            await events.emit('chat', group.chat_id);
             return true;
         },
     };
@@ -119,7 +125,7 @@ async function fixture(t, transcriptStatus = 200) {
     document.getElementById('rm_print_characters_block').append(card);
     adapter.decorateGroupCard(card, envelope);
     await settle();
-    return { dom, document, native, adapter, calls, errors, card, envelope };
+    return { dom, document, native, adapter, calls, errors, card, envelope, events, setDiscoveryStatus: value => { discoveryStatus = value; } };
 }
 
 test('guest card and stored-chat DOM clicks replace native handlers and load the requested owner transcript', async t => {
@@ -166,6 +172,76 @@ test('message image failures use the default avatar before native destructive ha
         await f.native.printMessages();
         await settle();
     }
+});
+
+test('opening a shared group publishes its final transcript once through native CHAT_CHANGED', async t => {
+    const f = await fixture(t);
+    const changes = [];
+    f.events.on('chat', id => changes.push({ id, metadata: structuredClone(f.native.metadata), messages: structuredClone(f.native.chat) }));
+    await f.adapter.openGroup('host', '42');
+    assert.equal(changes.length, 1, 'native opener already publishes CHAT_CHANGED');
+    assert.equal(changes[0].id, 'first');
+    assert.equal(changes[0].messages[0].mes, 'First');
+    assert.deepEqual(changes[0].metadata, { world_info: 'Book' });
+});
+
+test('a read paused in native clearChat cannot overwrite a newer shared selection', async t => {
+    const f = await fixture(t);
+    await f.adapter.openGroup('host', '42');
+    const clear = f.native.clearChat;
+    let release;
+    f.native.clearChat = async () => {
+        await clear();
+        f.native.clearChat = clear;
+        await new Promise(resolve => { release = resolve; });
+    };
+    const previous = f.adapter.openChat('host', '42', 'first');
+    await settle();
+    assert.ok(release);
+    await f.adapter.openChat('host', '42', 'second');
+    release();
+    await previous;
+    assert.equal(f.native.chat[0].mes, 'Second');
+    assert.equal(f.native.groups.find(group => group.id === f.native.selectedGroup).chat_id, 'second');
+});
+
+test('a new native creation preview is not replaced by the still-open shared conversation portrait', async t => {
+    const f = await fixture(t);
+    await f.adapter.openGroup('host', '42');
+    f.native.select_group_chats(null);
+    const preview = f.document.createElement('div');
+    preview.id = 'group_avatar_preview';
+    const image = f.document.createElement('img');
+    image.src = '/thumbnail?type=avatar&file=New-local.png';
+    preview.append(image);
+    f.document.getElementById('rm_group_chats_block').append(preview);
+    await settle();
+    assert.equal(image.getAttribute('src'), '/thumbnail?type=avatar&file=New-local.png');
+});
+
+test('a failed shared discovery keeps successful native listing usable and can recover', async t => {
+    const f = await fixture(t);
+    f.setDiscoveryStatus(404);
+    const response = await f.dom.window.fetch('/api/groups/all', { method: 'POST' });
+    assert.equal(response.ok, true);
+    assert.deepEqual(await response.json(), []);
+    assert.equal(f.errors.length, 1, 'shared discovery failure must remain visible');
+    f.setDiscoveryStatus(200);
+    const recovered = await (await f.dom.window.fetch('/api/groups/all', { method: 'POST' })).json();
+    assert.equal(recovered.length, 1);
+    assert.equal(recovered[0].name, 'Shared');
+});
+
+test('a shared collage updates its image count when native markup or membership changes', async t => {
+    const f = await fixture(t);
+    const entry = structuredClone(f.envelope);
+    entry.group.members = ['One.png', 'Two.png', 'Three.png'];
+    f.adapter.decorateGroupCard(f.card, entry);
+    assert.deepEqual([...f.card.querySelectorAll('.avatar img')].map(image => image.getAttribute('src')), entry.group.members.map(filename => `/api/plugins/multiplayer/accounts/host/characters/${filename}`));
+    entry.group.members = ['Two.png'];
+    f.adapter.decorateGroupCard(f.card, entry);
+    assert.equal(f.card.querySelectorAll('.avatar img').length, 1);
+    assert.equal(f.card.querySelector('.avatar img').getAttribute('src'), '/api/plugins/multiplayer/accounts/host/characters/Two.png');
 });
 
 test('failed shared click reports one load error and never opens a native empty chat', async t => {
