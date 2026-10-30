@@ -10,7 +10,7 @@ const integration = await import(moduleUrl).catch(error => {
     return {};
 });
 
-function fixture(t, stateOverrides = {}) {
+function fixture(t, stateOverrides = {}, renderMessage) {
     assert.equal(typeof integration.createConversationUI, 'function');
     const dom = new JSDOM('<textarea id="send_textarea"></textarea><button id="send_but">Send</button><button id="option_regenerate">Regenerate</button><button id="option_delete_mes">Bulk delete</button><div id="chat"></div>', { url: 'http://localhost/' });
     t.after(() => dom.window.close());
@@ -23,7 +23,7 @@ function fixture(t, stateOverrides = {}) {
     };
     let enterEnabled = true;
     const ui = integration.createConversationUI({
-        document, window: dom.window, getState: () => state,
+        document, window: dom.window, getState: () => state, renderMessage,
         onSubmit: text => { calls.push(['submit', text]); },
         onGenerate: () => { calls.push(['generate']); },
         onEdit: (...args) => { calls.push(['edit', ...args]); },
@@ -264,6 +264,32 @@ test('shared chats do not expose native automatic group generation', t => {
     assert.equal(hidden(automatic), true);
     automatic.click();
     assert.equal(activated, false);
+});
+
+test('AI previews use native message markup, portrait, and formatting without activating native controls', t => {
+    let document;
+    const rendered = [];
+    const f = fixture(t, {}, message => {
+        rendered.push(message);
+        const row = document.createElement('div'); row.className = 'mes'; row.setAttribute('mesid', '0');
+        row.innerHTML = '<div class="mesAvatarWrapper"><div class="avatar"><img></div></div><div class="mes_block"><div class="ch_name"><span class="name_text"></span></div><div class="mes_text"><strong>Native formatting</strong></div><div class="mes_buttons"><button class="mes_edit">Edit</button></div></div>';
+        row.querySelector('img').src = message.force_avatar;
+        row.querySelector('.name_text').textContent = message.name;
+        return row;
+    });
+    document = f.document;
+    f.state.previews = [{ messageId: 'ai', name: 'Guide', text: '**Native formatting**', force_avatar: '/api/plugins/multiplayer/accounts/host/characters/Guide.png' }];
+    f.ui.refresh();
+    const preview = document.querySelector('[data-multiplayer-preview="ai"]');
+    assert.equal(rendered.length, 1);
+    assert.equal(rendered[0].is_user, false);
+    assert.ok(preview.classList.contains('mes'));
+    assert.ok(preview.querySelector('.mes_block .mes_text strong'));
+    assert.equal(preview.querySelector('.mesAvatarWrapper .avatar img').getAttribute('src'), f.state.previews[0].force_avatar);
+    let edited = false;
+    preview.querySelector('.mes_edit').addEventListener('click', () => { edited = true; });
+    preview.querySelector('.mes_edit').dispatchEvent(new f.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    assert.equal(edited, false);
 });
 
 test('dispose restores ordinary native submission handling', t => {

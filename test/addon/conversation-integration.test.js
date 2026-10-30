@@ -223,7 +223,8 @@ test('mounted command processing does not add a second human turn', async t => {
 test('stream previews wait for native rendered content and never publish reasoning', async t => {
     const h = await fixture(t);
     await h.integration.session.generationStatus(true);
-    h.native.chat.push({ mes: 'previous', name: 'GM', is_user: false, extra: { reasoning: 'secret' } });
+    h.native.chat.push({ mes: 'previous', name: 'GM', is_user: false, original_avatar: 'GM.png', force_avatar: '/thumbnail?type=avatar&file=GM.png', extra: { reasoning: 'secret' } });
+    h.native.characterPortrait = () => '/api/plugins/multiplayer/accounts/owner/characters/GM.png';
     h.native.streamingProcessor = { messageId: 0, type: 'normal' };
     const row = h.dom.window.document.createElement('div'); row.className = 'mes'; row.setAttribute('mesid', '0');
     const text = h.dom.window.document.createElement('div'); text.className = 'mes_text'; row.append(text); h.dom.window.document.querySelector('#chat').append(row);
@@ -234,6 +235,7 @@ test('stream previews wait for native rendered content and never publish reasoni
     await settle();
     const preview = h.sent.filter(([, event]) => event === 'multiplayer.generation.preview').at(-1)?.[2];
     assert.equal(preview?.text, 'new response');
+    assert.equal(preview.force_avatar, '/api/plugins/multiplayer/accounts/owner/characters/GM.png');
     assert.equal(JSON.stringify(preview).includes('secret'), false);
 });
 
