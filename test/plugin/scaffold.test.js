@@ -33,6 +33,7 @@ test('initialization registers status, resource GET routes, and the ticket POST 
         ['GET', '/accounts/:accountID/characters/:characterID/card'],
         ['GET', '/accounts/:accountID/characters/:characterID'],
         ['GET', '/accounts/:accountID/personas/:filename'],
+        ['GET', '/accounts/:accountID/personas/:filename/description'],
         ['GET', '/accounts/:accountID/lore/:filename'],
         ['GET', '/chats'],
         ['GET', '/chats/:accountID/groups'],

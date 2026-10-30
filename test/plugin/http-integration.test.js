@@ -86,6 +86,26 @@ test('Express decodes each identifier once and preserves source-qualified resour
     assert.deepEqual(Buffer.from(await image.arrayBuffer()), fixture.png);
 });
 
+test('persona description route decodes the filename and leaves the persona image route unchanged', async t => {
+    const fixture = await createFixture(t);
+    const filename = 'Past persona ü %.png';
+    await fixture.put('owner', 'avatars', filename, fixture.persona);
+    await fixture.put('owner', 'root', 'settings.json', {
+        power_user: { persona_descriptions: { [filename]: { description: 'Saved persona' } } },
+    });
+    const base = await serve(t, { host: fixture.host });
+    const url = `${base}/accounts/owner/personas/${encodeURIComponent(filename)}`;
+    const headers = { 'x-test-account': 'guest' };
+    const description = await fetch(`${url}/description`, { headers });
+    assert.equal(description.status, 200);
+    assert.match(description.headers.get('content-type'), /^application\/json/);
+    assert.deepEqual(await description.json(), { description: 'Saved persona' });
+    const image = await fetch(url, { headers });
+    assert.equal(image.status, 200);
+    assert.equal(image.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await image.arrayBuffer()), fixture.persona);
+});
+
 test('rejected asynchronous ticket issuance completes with 500 without exposing error details', async t => {
     const base = await serve(t, {
         host: {},

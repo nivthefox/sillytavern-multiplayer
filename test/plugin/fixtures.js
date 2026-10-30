@@ -15,6 +15,7 @@ export const routes = {
     card: '/accounts/:accountID/characters/:characterID/card',
     character: '/accounts/:accountID/characters/:characterID',
     persona: '/accounts/:accountID/personas/:filename',
+    personaDescription: '/accounts/:accountID/personas/:filename/description',
     lore: '/accounts/:accountID/lore/:filename',
     groups: '/chats',
     accountGroups: '/chats/:accountID/groups',
