@@ -39,7 +39,7 @@ function rejected(result, pattern) {
     }
 }
 
-function createHarness() {
+function createHarness(overrides = {}) {
     assert.ok(moduleResult.module, `addon/event-bus.js must load: ${moduleResult.error?.message}`);
     assert.equal(typeof moduleResult.module.BrowserEventBus, 'function', 'export BrowserEventBus');
     let now = 0;
@@ -115,6 +115,7 @@ function createHarness() {
         },
         clearTimeout: id => timers.delete(id),
         logger: Object.fromEntries(['error', 'warn', 'info', 'debug', 'log'].map(level => [level, (...args) => logs.push({ level, args })])),
+        ...overrides,
     };
     const bus = new moduleResult.module.BrowserEventBus(options);
 
@@ -203,8 +204,7 @@ test('ticket request uses native CSRF headers, no body, same origin and an encod
 });
 
 test('HTTP origins use ws rather than wss', async () => {
-    const h = createHarness();
-    h.options.location.protocol = 'http:';
+    const h = createHarness({ location: new URL('http://tavern.example:8080/') });
     const socket = await h.connect();
     assert.equal(new URL(socket.url).protocol, 'ws:');
 });
@@ -653,6 +653,160 @@ for (const [label, makeBody] of [
         fulfilled(valid, undefined);
     });
 }
+
+test('superseded join acknowledgment arriving before the latest acknowledgment is ignored', async () => {
+    const h = createHarness();
+    const socket = await h.connect();
+    const statuses = [];
+    h.bus.on('bus.status', (...args) => statuses.push(args));
+    h.context.chat = chatA;
+    const first = observe(h.bus.join(chatA));
+    await flush();
+    const firstRequest = socket.sent.at(-1);
+    h.context.chat = chatB;
+    const latest = observe(h.bus.join(chatB));
+    await flush();
+    const latestRequest = socket.sent.at(-1);
+    rejected(first, /superseded/i);
+    await h.reply(socket, firstRequest, { ...joinedData, isOwner: true });
+    assert.equal(h.bus.sessionStatus, null);
+    assert.deepEqual(statuses, []);
+    assert.equal(latest.state, 'pending');
+    await h.reply(socket, latestRequest, joinedData);
+    fulfilled(latest, joinedData);
+    assert.deepEqual(statuses, [[chatB, null, { isOwner: false, ownerPresent: true }]]);
+});
+
+test('join result for a no-longer-open chat does not publish current status', async () => {
+    const h = createHarness();
+    const socket = await h.connect();
+    const statuses = [];
+    h.bus.on('bus.status', (...args) => statuses.push(args));
+    h.context.chat = chatA;
+    observe(h.bus.join(chatA));
+    await flush();
+    h.context.chat = chatB;
+    await h.reply(socket, socket.sent.at(-1), joinedData);
+    assert.deepEqual(statuses, []);
+    assert.equal(h.bus.sessionStatus, null);
+});
+
+test('failed leave rejects rather than reporting successful departure', async () => {
+    const h = createHarness();
+    const socket = await h.connect();
+    await h.join(socket);
+    const result = observe(h.bus.leave());
+    await flush();
+    await h.reply(socket, socket.sent.at(-1), null, { code: 'internal_error', message: 'Leave failed' });
+    rejected(result, /internal_error/);
+});
+
+test('concurrent connect calls share a single ticket and socket attempt', async () => {
+    const h = createHarness();
+    const first = observe(h.bus.connect());
+    const second = observe(h.bus.connect());
+    await flush();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.sockets.length, 1);
+    h.sockets[0].open();
+    await flush();
+    fulfilled(first, undefined);
+    fulfilled(second, undefined);
+});
+
+test('current chat must match acknowledged association before sending', async () => {
+    const h = createHarness();
+    const socket = await h.connect();
+    await h.join(socket);
+    h.context.chat = chatB;
+    const count = socket.sent.length;
+    const result = observe(h.bus.send('all', 'addon.event', {}));
+    await flush();
+    rejected(result);
+    assert.equal(socket.sent.length, count);
+});
+
+test('server status before a join acknowledgment reaches the current chat', async () => {
+    const h = createHarness();
+    const socket = await h.connect();
+    h.context.chat = chatA;
+    const statuses = [];
+    h.bus.on('bus.status', (...args) => statuses.push(args));
+    const joined = observe(h.bus.join(chatA));
+    await flush();
+    socket.message({ op: 'status', chat: chatA, isOwner: true, ownerPresent: true });
+    await flush();
+    assert.deepEqual(statuses, [[chatA, null, { isOwner: true, ownerPresent: true }]]);
+    assert.equal(joined.state, 'pending');
+    await h.reply(socket, socket.sent.at(-1), { ...joinedData, isOwner: true });
+    fulfilled(joined, { ...joinedData, isOwner: true });
+});
+
+test('old socket messages and close callbacks cannot affect a recovered connection', async () => {
+    const h = createHarness();
+    const old = await h.connect();
+    await h.join(old);
+    old.close();
+    await h.advance(1000);
+    const recovered = h.sockets.at(-1);
+    recovered.open();
+    await flush();
+    await h.reply(recovered, recovered.sent.at(-1), joinedData);
+    const calls = [];
+    h.bus.on('addon.event', (...args) => calls.push(args));
+    h.bus.on('bus.disconnected', (...args) => calls.push(args));
+    deliver(old, chatA, {}, 'addon.event');
+    old.message({ op: 'status', chat: chatA, isOwner: true, ownerPresent: false });
+    old.close();
+    await flush();
+    assert.deepEqual(calls, []);
+    assert.deepEqual(h.bus.sessionStatus, { isOwner: false, ownerPresent: true });
+    await h.advance(30000);
+    assert.equal(h.requests.length, 2);
+});
+
+for (const intent of ['join', 'leave']) {
+    test(`reconnection does not override a connected handler's explicit ${intent} intent`, async () => {
+        const h = createHarness();
+        const first = await h.connect();
+        await h.join(first);
+        first.close();
+        let latest;
+        h.bus.on('bus.connected', () => {
+            if (intent === 'join') {
+                h.context.chat = chatB;
+                latest = observe(h.bus.join(chatB));
+                return;
+            }
+            h.context.chat = null;
+            latest = observe(h.bus.leave());
+        });
+        await h.advance(1000);
+        const recovered = h.sockets.at(-1);
+        recovered.open();
+        await flush();
+        assert.deepEqual(recovered.sent.map(request => request.op), [intent]);
+        await h.reply(recovered, recovered.sent[0], intent === 'join' ? joinedData : null);
+        fulfilled(latest, intent === 'join' ? joinedData : undefined);
+    });
+}
+
+test('session status getter cannot mutate the library state', async () => {
+    const h = createHarness();
+    const socket = await h.connect();
+    await h.join(socket);
+    const snapshot = h.bus.sessionStatus;
+    snapshot.ownerPresent = false;
+    assert.deepEqual(h.bus.sessionStatus, { isOwner: false, ownerPresent: true });
+});
+
+test('open idle sockets generate no application heartbeat messages', async () => {
+    const h = createHarness();
+    const socket = await h.connect();
+    await h.advance(60000);
+    assert.deepEqual(socket.sent, []);
+    assert.equal(h.requests.length, 1);
+});
 
 for (const body of [null, false, 0, '', ['value', { deep: [true, null] }], { arbitrary: { field: 'no schema' } }]) {
     test(`JSON body ${JSON.stringify(body)} is transmitted unchanged`, async () => {
