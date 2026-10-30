@@ -1,0 +1,9 @@
+{
+    "display_name": "Multiplayer (scaffold)",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "author": "SillyTavern Multiplayer contributors",
+    "version": "0.0.0"
+}

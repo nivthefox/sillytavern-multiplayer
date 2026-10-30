@@ -1,0 +1,15 @@
+{
+    "name": "sillytavern-multiplayer-workspace",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "workspaces": ["packages/plugin", "packages/addon"],
+    "engines": {
+        "node": ">=22"
+    },
+    "scripts": {
+        "test": "npm run test --workspaces",
+        "test:plugin": "npm run test --workspace @sillytavern-multiplayer/plugin",
+        "test:addon": "npm run test --workspace @sillytavern-multiplayer/addon"
+    }
+}
