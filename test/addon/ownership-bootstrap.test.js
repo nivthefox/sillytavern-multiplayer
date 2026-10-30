@@ -146,6 +146,7 @@ function readingFixture() {
     const group = { id: '7', name: 'Remote', members: ['Same.png'], disabled_members: [], chats: ['a', 'b.jsonl'], chat_id: 'a' };
     const envelopes = [{ owner: { id: 'host', name: 'Host' }, group }];
     const window = {
+        location: { href: 'https://tavern.example/' },
         fetch: async (url, options) => {
             calls.push(['nativeFetch', String(url), options]);
             if (String(url) === '/api/groups/all') {

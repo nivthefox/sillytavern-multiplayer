@@ -16,9 +16,9 @@ async function requestBody(input, options) {
     return {};
 }
 
-function requestPath(input) {
+function requestPath(input, baseURL) {
     const value = typeof input === 'string' ? input : input.url ?? String(input);
-    return new URL(value, globalThis.location?.href ?? 'http://localhost/').pathname;
+    return new URL(value, baseURL).pathname;
 }
 
 /**
@@ -177,7 +177,7 @@ export function createOwnershipNative({ service, native, document, window }) {
     }
 
     async function interceptedFetch(input, options) {
-        const path = requestPath(input);
+        const path = requestPath(input, document.baseURI ?? window.location.href);
         if (path === '/api/groups/create') {
             return createNativeGroup(input, options);
         }
@@ -382,7 +382,7 @@ export function createOwnershipNative({ service, native, document, window }) {
             if (!src || image.dataset.multiplayerFailed) {
                 continue;
             }
-            const url = new URL(src, 'http://localhost/');
+            const url = new URL(src, document.baseURI ?? window.location.href);
             const file = url.searchParams.get('file');
             const card = native.characters.find(character => character.avatar === file && character.multiplayer?.accountId);
             if (url.pathname === '/thumbnail' && card) {
