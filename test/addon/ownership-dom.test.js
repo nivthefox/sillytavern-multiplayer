@@ -27,10 +27,14 @@ async function fixture(t, transcriptStatus = 200) {
     const errors = [];
     const events = new EventEmitter();
     let discoveryStatus = 200;
+    let recentRows = [];
+    let summaryStatus = 200;
+    let summaries = [{ file_id: 'second', file_name: 'second.jsonl', chat_items: 1, mes: 'Second', last_mes: 1 }];
     const envelope = { owner: { id: 'host', name: 'Host <&>' }, group: { id: '42', name: 'Shared', members: ['NPC.png'], disabled_members: [], chats: ['first', 'second'], chat_id: 'first', multiplayer: { owner: 'host', accounts: ['guest'] } } };
     const fetch = async (url, options) => {
         calls.push([String(url), options]);
         const path = String(url);
+        if (path === '/api/chats/recent') { return Response.json(recentRows); }
         if (path === '/api/groups/all') {
             return Response.json([]);
         }
@@ -47,7 +51,7 @@ async function fixture(t, transcriptStatus = 200) {
             return Response.json(envelope);
         }
         if (path.endsWith('/groups/42/chats')) {
-            return Response.json([{ file_id: 'second', file_name: 'second.jsonl', chat_items: 1, mes: 'Second', last_mes: 1 }]);
+            return Response.json(summaries, { status: summaryStatus });
         }
         if (path.includes('/groups/42/chats/')) {
             return Response.json([{ chat_metadata: { world_info: 'Book' } }, { name: 'NPC', mes: path.endsWith('/second') ? 'Second' : 'First', original_avatar: 'NPC.png', is_user: false }], { status: transcriptStatus });
@@ -59,6 +63,7 @@ async function fixture(t, transcriptStatus = 200) {
     const native = {
         groups: [], characters: [], chat: [], selectedGroup: null, default_avatar: '/img/ai4.png',
         entitiesFilter: { filterFunctions: { native: entities => entities } },
+        compareRecentChats: (left, right) => Number(right.last_mes) - Number(left.last_mes),
         eventSource: events, event_types: { CHAT_CHANGED: 'chat', CHARACTER_PAGE_LOADED: 'page' },
         clearChat: async ({ clearData = false } = {}) => {
             document.getElementById('chat').replaceChildren();
@@ -133,7 +138,7 @@ async function fixture(t, transcriptStatus = 200) {
     document.getElementById('rm_print_characters_block').append(card);
     adapter.decorateGroupCard(card, envelope);
     await settle();
-    return { dom, document, native, adapter, calls, errors, card, envelope, events, setDiscoveryStatus: value => { discoveryStatus = value; } };
+    return { dom, document, native, adapter, calls, errors, card, envelope, events, setDiscoveryStatus: value => { discoveryStatus = value; }, setRecentRows: value => { recentRows = value; }, setSummaries: value => { summaries = value; }, setSummaryStatus: value => { summaryStatus = value; } };
 }
 
 test('grid and list cards show only the ownership badge tooltip, never an ownership text line', async t => {
@@ -192,6 +197,62 @@ test('remote group members remain available to the group but never become standa
     assert.ok(f.native.characters.includes(remote));
     f.adapter.dispose();
     assert.deepEqual(Object.keys(f.native.entitiesFilter.filterFunctions), ['native']);
+});
+
+test('Recent Chats merges shared summaries using native dates, limits and source-qualified group IDs', async t => {
+    const f = await fixture(t);
+    const local = { group: '42', file_name: 'local.jsonl', last_mes: 200 };
+    f.setRecentRows([local]);
+    f.setSummaries([{ file_id: 'second', file_name: 'second.jsonl', last_mes: 300, chat_items: 1, mes: 'Shared' }]);
+    const response = await f.dom.window.fetch('/api/chats/recent', { method: 'POST', body: JSON.stringify({ max: 1, pinned: [] }) });
+    const rows = await response.json();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].group, f.card.getAttribute('data-grid'));
+    assert.notEqual(rows[0].group, '42');
+    assert.equal(rows[0].file_name, 'second.jsonl');
+    assert.equal(rows[0].last_mes, 300);
+    f.setSummaries([{ file_id: 'second', file_name: 'second.jsonl', last_mes: 100 }]);
+    const older = await f.dom.window.fetch('/api/chats/recent', { method: 'POST', body: JSON.stringify({ max: 1, pinned: [] }) });
+    assert.deepEqual(await older.json(), [local]);
+});
+
+test('Recent Chats retains native pin ordering without duplicating owned chats', async t => {
+    const f = await fixture(t);
+    const local = { group: 'local', file_name: 'local.jsonl', last_mes: 500 };
+    f.setRecentRows([local]);
+    f.setSummaries([{ file_id: 'second', file_name: 'second.jsonl', last_mes: 100 }]);
+    const pinned = [{ group: f.card.getAttribute('data-grid'), file_name: 'second.jsonl' }];
+    const response = await f.dom.window.fetch('/api/chats/recent', { method: 'POST', body: JSON.stringify({ max: 1, pinned }) });
+    const rows = await response.json();
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].group, pinned[0].group);
+    assert.deepEqual(rows[1], local);
+    assert.equal(f.calls.some(([url]) => url.includes('/chats/guest/groups/')), false);
+});
+
+test('a shared Recent Chat opens its exact owner transcript without the native local opener', async t => {
+    const f = await fixture(t);
+    const recent = f.document.createElement('div'); recent.className = 'recentChat group';
+    recent.dataset.group = f.card.getAttribute('data-grid'); recent.dataset.file = 'second';
+    recent.innerHTML = '<span class="chatName">Recent shared chat</span><button class="pinChat">Pin</button>';
+    f.document.body.append(recent);
+    let openedLocally = false;
+    recent.addEventListener('click', () => { openedLocally = true; });
+    recent.querySelector('.chatName').click();
+    await settle();
+    assert.equal(openedLocally, false);
+    assert.equal(f.native.chat[0]?.mes, 'Second');
+    assert.equal(f.calls.some(([url]) => url.endsWith('/chats/first')), false);
+    assert.equal(f.calls.some(([url]) => url === '/api/groups/edit'), false);
+});
+
+test('a failed shared recent summary does not discard native recent chats', async t => {
+    const f = await fixture(t);
+    const local = { avatar: 'local.png', file_name: 'local.jsonl', last_mes: 100 };
+    f.setRecentRows([local]); f.setSummaryStatus(500);
+    const response = await f.dom.window.fetch('/api/chats/recent', { method: 'POST', body: JSON.stringify({ max: 15, pinned: [] }) });
+    assert.deepEqual(await response.json(), [local]);
+    assert.equal(f.errors.length, 1);
 });
 
 test('guest card and stored-chat DOM clicks replace native handlers and load the requested owner transcript', async t => {

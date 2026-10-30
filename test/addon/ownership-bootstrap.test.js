@@ -66,7 +66,9 @@ function startupFixture(ready = false) {
     const groups = { groups: [], selected_group: null, openGroupById() {}, select_group_chats() {} };
     const users = { currentUser: { handle: 'real-handle', name: 'Real name', avatar: 'data:portrait' } };
     const extensions = { extension_settings: {} };
-    const modules = { '/script.js': script, '/scripts/group-chats.js': groups, '/scripts/user.js': users, '/scripts/extensions.js': extensions };
+    const welcome = { openWelcomeScreen: async options => calls.push(['welcome', options]) };
+    const utils = { timestampToMoment: value => value, sortMoments: (left, right) => right - left };
+    const modules = { '/script.js': script, '/scripts/group-chats.js': groups, '/scripts/user.js': users, '/scripts/extensions.js': extensions, '/scripts/welcome-screen.js': welcome, '/scripts/utils.js': utils };
     const loadModule = async path => {
         assert.ok(modules[path], `unexpected native module ${path}`);
         return modules[path];
@@ -99,7 +101,7 @@ test('browser bootstrap waits for native APP_READY before reading the authentica
     await f.events.emit('ready');
     await pending;
     assert.deepEqual(f.getServiceOptions()?.account, { id: 'ready-handle', name: 'Ready account', avatar: null });
-    assert.deepEqual(f.calls, [['mount'], ['refreshGroups']]);
+    assert.deepEqual(f.calls, [['mount'], ['refreshGroups'], ['welcome', { force: true }]]);
 });
 
 test('late initialization uses the native replayed APP_READY event and mounts only once', async () => {
@@ -108,7 +110,7 @@ test('late initialization uses the native replayed APP_READY event and mounts on
     const second = await initialize(f.options);
     assert.equal(first, f.adapter);
     assert.equal(second, first);
-    assert.deepEqual(f.calls, [['mount'], ['refreshGroups']]);
+    assert.deepEqual(f.calls, [['mount'], ['refreshGroups'], ['welcome', { force: true }]]);
 });
 
 test('bootstrap native array and selection access follows live module bindings', async () => {
@@ -123,6 +125,7 @@ test('bootstrap native array and selection access follows live module bindings',
     assert.equal(native.characters, f.script.characters);
     assert.equal(native.selectedGroup, 'replacement');
     assert.equal(native.openGroupById, f.groups.openGroupById);
+    assert.equal(native.compareRecentChats({ last_mes: 1 }, { last_mes: 4 }), 3);
 });
 
 test('core requests use the original fetch, authenticated headers and native settings persistence', async () => {
