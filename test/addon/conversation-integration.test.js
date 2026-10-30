@@ -59,6 +59,21 @@ test('mounted owner text submission prepares and saves without generating or bus
     assert.deepEqual(h.integration.session.getState().pending, []);
 });
 
+test('owner submission clears only its submitted draft before waiting for persistence', async t => {
+    const h = await fixture(t);
+    let finish;
+    h.native.saveChatConditional = () => new Promise(resolve => { finish = resolve; });
+    const composer = h.dom.window.document.querySelector('#send_textarea');
+    composer.value = 'submitted';
+    h.dom.window.document.querySelector('#send_but').click();
+    await settle();
+    assert.equal(composer.value, '');
+    composer.value = 'next draft';
+    finish();
+    await settle();
+    assert.equal(composer.value, 'next draft');
+});
+
 test('mounted guest routes prepared text and never saves locally', async t => {
     const h = await fixture(t, false);
     h.dom.window.document.querySelector('#send_textarea').value = 'guest turn';
