@@ -16,6 +16,9 @@
         "mime-types": "^3.0.2"
     },
     "devDependencies": {
-        "express": "^4.22.3"
+        "express": "^4.22.3",
+        "png-chunk-text": "^1.0.0",
+        "png-chunks-encode": "^1.0.0",
+        "png-chunks-extract": "^1.0.0"
     }
 }
