@@ -8,6 +8,7 @@
         "node": ">=22"
     },
     "scripts": {
+        "setup:plugin": "node scripts/setup-plugin.js",
         "test": "node --test",
         "test:plugin": "node --test 'test/plugin/**/*.test.js'",
         "test:addon": "node --test 'test/addon/**/*.test.js'"

@@ -11,7 +11,7 @@ test('entry exposes the SillyTavern plugin contract', () => {
     assert.ok(info.description.length > 0);
 });
 
-test('initialization registers only the resource GET routes and ticket POST route', async () => {
+test('initialization registers status, resource GET routes, and the ticket POST route', async () => {
     const registrations = [];
     const router = {
         get(path, handler) {
@@ -28,6 +28,7 @@ test('initialization registers only the resource GET routes and ticket POST rout
     assert.ok(result instanceof Promise);
     assert.equal(await result, undefined);
     assert.deepEqual(registrations, [
+        ['GET', '/status'],
         ['GET', '/accounts'],
         ['GET', '/accounts/:accountID/characters/:characterID/card'],
         ['GET', '/accounts/:accountID/characters/:characterID'],
@@ -40,6 +41,21 @@ test('initialization registers only the resource GET routes and ticket POST rout
         ['GET', '/chats/:accountID/groups/:groupID/chats/:chatID'],
         ['POST', '/events/connect'],
     ]);
+});
+
+test('status endpoint identifies the loaded plugin without accessing native resources', async () => {
+    let statusHandler;
+    await init({
+        get(path, handler) {
+            if (path === '/status') {
+                statusHandler = handler;
+            }
+        },
+        post() {},
+    }, { host: {} });
+    let body;
+    statusHandler({}, { json(value) { body = value; } });
+    assert.deepEqual(body, { plugin: 'multiplayer' });
 });
 
 test('shutdown is safe before initialization and on repeated calls', async () => {

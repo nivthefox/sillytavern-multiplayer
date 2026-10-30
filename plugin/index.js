@@ -16,6 +16,7 @@ export const info = {
  * @returns {Promise<void>}
  */
 export async function init(router, options) {
+    router.get('/status', (_request, response) => response.json({ plugin: info.id }));
     registerHttpRoutes(router, options);
 }
 
