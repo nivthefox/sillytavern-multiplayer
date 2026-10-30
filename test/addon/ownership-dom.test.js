@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { EventEmitter } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import { createChatOwnership } from '../../addon/chat-ownership.js';
 
@@ -133,6 +134,25 @@ async function fixture(t, transcriptStatus = 200) {
     await settle();
     return { dom, document, native, adapter, calls, errors, card, envelope, events, setDiscoveryStatus: value => { discoveryStatus = value; } };
 }
+
+test('grid cards show the ownership badge tooltip without an ownership text line', async t => {
+    const f = await fixture(t);
+    const manifest = JSON.parse(await readFile(new URL('../../manifest.json', import.meta.url), 'utf8'));
+    if (manifest.css) {
+        const style = f.document.createElement('style');
+        style.textContent = await readFile(new URL(`../../${manifest.css}`, import.meta.url), 'utf8');
+        f.document.head.append(style);
+    }
+    f.document.body.classList.add('charListGrid');
+    const label = f.card.querySelector('.multiplayer-owner-label');
+    const badge = f.card.querySelector('.avatar .multiplayer-owner-badge');
+    assert.equal(f.dom.window.getComputedStyle(label).display, 'none');
+    assert.notEqual(f.dom.window.getComputedStyle(badge).display, 'none');
+    assert.equal(badge.title, 'Owned by Host <&>');
+    assert.equal(f.card.querySelector('.ch_name').textContent, 'Shared');
+    f.document.body.classList.remove('charListGrid');
+    assert.notEqual(f.dom.window.getComputedStyle(label).display, 'none');
+});
 
 test('guest card and stored-chat DOM clicks replace native handlers and load the requested owner transcript', async t => {
     const f = await fixture(t);
