@@ -1,3 +1,4 @@
+import { initializeOwnership } from './ownership-bootstrap.js';
 import { getPluginStatus } from './plugin-status.js';
 
 const statusMessages = {
@@ -58,6 +59,9 @@ function mountStatusPanel() {
 function initializeAddon() {
     if (typeof document === 'undefined') {
         return;
+    }
+    if (globalThis.SillyTavern) {
+        void initializeOwnership().catch(error => globalThis.toastr?.error(error.message, 'Multiplayer'));
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', mountStatusPanel, { once: true });

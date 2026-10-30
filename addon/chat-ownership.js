@@ -97,6 +97,7 @@ export function createChatOwnership({ account, extensionSettings, saveSettings, 
         /**
          * Creates a native group, then persists its ownership before reporting success.
          * A failed second save is retried against the same returned group on the next call.
+         * Overlapping calls share the active operation and its original arguments.
          * @param {object} model Native creation model with at least one character member.
          * @param {string[]} [accounts] Selected guest handles from the displayed choices.
          * @returns {Promise<object>} Complete saved native group record.

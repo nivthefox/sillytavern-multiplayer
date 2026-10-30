@@ -2,7 +2,7 @@
 
 A multiplayer addon for sharing a scene with friends and an AI GM in SillyTavern. Each player will speak through their own persona, while the scene owner controls AI turns and shares the group's characters and lorebooks. Everyone uses an account on the same SillyTavern server.
 
-**Still under development: shared multiplayer play is not available yet.** You can install the addon and check its server connection, but you cannot play a shared scene yet.
+**Still under development: shared multiplayer play is not available yet.** Chat ownership provides shared group discovery and reading, including while the owner is offline. Synchronized turns, generation authority, and shared lorebook access are not implemented yet.
 
 ## Requirements
 
@@ -51,6 +51,16 @@ Complete this once on the machine running SillyTavern, using the same operating-
 4. In the Multiplayer extension settings, select **Check again** to confirm the connection.
 
 **Keep the `sillytavern-multiplayer` folder where you installed it.** Moving or deleting it will stop the server plugin from working.
+
+## Shared groups
+
+Create a group through SillyTavern’s **Create New Chat Group** screen. Select at least one character and optionally select guests under **Add Other Accounts**. Your account is the owner. Creation completes after the group and its ownership are both saved; if the ownership save fails, submit again to retry that save without creating another group.
+
+Shared groups appear in participants’ normal character listing with an **Owned by …** label and portrait badge. Guests can open the group and select saved chats through the normal chat interface, even when the owner is offline. Character cards and portraits come from the owner’s account.
+
+In extension settings, **Allow others to add me to shared groups** is enabled by default. Turning it off hides you from future account-choice listings; it does not remove existing memberships or choices already displayed to another user.
+
+This milestone only supports guest discovery, opening, and reading. Other guest controls remain unchanged and may behave incorrectly or make unsecured changes. Do not use them to play a shared scene yet.
 
 ## Updating
 
