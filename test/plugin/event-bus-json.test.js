@@ -19,7 +19,7 @@ for (const destination of ['all', 'server']) {
             const circular = {};
             circular.self = circular;
             const body = { BigInt: { value: 1n }, circular, undefined: undefined }[kind];
-            await assert.rejects(bus.send(chat, destination, 'example.event', body));
+            await assert.rejects(bus.send(chat, destination, 'example.event', body), { code: 'invalid_request' });
             assert.deepEqual(delivered, []);
             assert.deepEqual(handled, []);
             await bus.send(chat, destination, 'example.event', { valid: true });

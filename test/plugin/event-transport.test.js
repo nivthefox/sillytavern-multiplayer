@@ -151,6 +151,7 @@ async function open(t, url, options = {}) {
 async function rejectedUpgrade(url, headers = {}) {
     return new Promise((resolve, reject) => {
         const req = request(url.replace('ws:', 'http:'), {
+            agent: false,
             headers: {
                 Connection: 'Upgrade', Upgrade: 'websocket',
                 'Sec-WebSocket-Version': '13',
@@ -192,6 +193,34 @@ test('tickets expire exactly 30 seconds after issuance and attach once per under
     const other = await serve(t, fixture.transport);
     await other.ticket();
     assert.equal(other.server.listenerCount('upgrade'), 1);
+});
+
+test('unused tickets release expiry timers and shutdown invalidates outstanding tickets', async t => {
+    const fixture = await setup(t);
+    await fixture.ticket();
+    assert.ok(fixture.clock.pending > 0);
+    fixture.clock.advance(30_000);
+    assert.equal(fixture.clock.pending, 0);
+    await fixture.ticket();
+    await fixture.transport.close();
+    assert.equal(fixture.clock.pending, 0);
+    assert.equal(fixture.server.listenerCount('upgrade'), 0);
+    await assert.rejects(async () => fixture.transport.issueTicket({
+        user: { profile: { handle: 'owner' } },
+        socket: { server: fixture.server },
+        baseUrl: mount,
+    }), /closed/i);
+    assert.equal(fixture.server.listenerCount('upgrade'), 0);
+    assert.equal(fixture.clock.pending, 0);
+});
+
+test('unauthenticated direct issuance does not attach or allocate a ticket', async t => {
+    const fixture = await setup(t);
+    await assert.rejects(async () => fixture.transport.issueTicket({
+        socket: { server: fixture.server }, baseUrl: mount,
+    }), { status: 403 });
+    assert.equal(fixture.server.listenerCount('upgrade'), 0);
+    assert.equal(fixture.clock.pending, 0);
 });
 
 test('successful upgrade consumes the ticket and binds the native account, not URL identity', async t => {

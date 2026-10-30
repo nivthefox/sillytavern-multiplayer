@@ -271,6 +271,24 @@ export class Resources {
     }
 
     /**
+     * Authorize a live chat association without loading or parsing its saved messages.
+     * @param {string} requester Authenticated account handle.
+     * @param {{accountId: string, groupId: string, chatId: string}} chat Source-qualified chat identity.
+     * @returns {Promise<void>} Resolves when membership and the referenced file are established.
+     */
+    async authorizeChat(requester, { accountId, groupId, chatId }) {
+        validateIdentifier(chatId);
+        const { group } = await this.#authorizedGroup(requester, accountId, groupId);
+        if (!group.chats.includes(chatId)) {
+            throw failure(403);
+        }
+        const path = await resourcePath(this.#directories(accountId).groupChats, `${chatId}.jsonl`);
+        if (!(await stat(path)).isFile()) {
+            throw failure(500);
+        }
+    }
+
+    /**
      * @param {string} requester Authenticated handle.
      * @param {string} accountID Storage owner handle.
      * @param {string} groupID Native group ID.

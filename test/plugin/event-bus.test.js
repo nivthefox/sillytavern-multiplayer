@@ -568,6 +568,62 @@ test('disconnect during pending authorization cannot resurrect membership', asyn
     assert.deepEqual(events(client), []);
 });
 
+test('disconnected senders cannot submit events or authorize another join', async t => {
+    const authorizations = [];
+    const { bus, connect } = setup(t, async (...args) => authorizations.push(args));
+    const client = connect();
+    const observer = connect('observer');
+    await join(client);
+    await join(observer);
+    const seen = [];
+    bus.on(eventName, (...args) => seen.push(args));
+    client.connection.disconnect();
+    clear(client, observer);
+    const count = authorizations.length;
+    await client.connection.receive(JSON.stringify({ op: 'send', requestId: 'closed-send', destination: 'all', eventName, body: null }));
+    await client.connection.receive(JSON.stringify({ op: 'send', requestId: 'closed-server', destination: 'server', eventName, body: null }));
+    await client.connection.receive(JSON.stringify({ op: 'join', requestId: 'closed-join', ...chat }));
+    assert.equal(authorizations.length, count);
+    assert.deepEqual(seen, []);
+    assert.deepEqual(client.messages, []);
+    assert.deepEqual(observer.messages, []);
+});
+
+test('disconnect discards sends queued behind a pending join', async t => {
+    const gate = deferred();
+    const { connect } = setup(t, async accountId => {
+        if (accountId === 'guest') {
+            await gate.promise;
+        }
+    });
+    const observer = connect('observer');
+    await join(observer);
+    const client = connect();
+    const pendingJoin = client.connection.receive(JSON.stringify({ op: 'join', requestId: 'joining', ...chat }));
+    const pendingSend = client.connection.receive(JSON.stringify({ op: 'send', requestId: 'queued', destination: 'all', eventName, body: null }));
+    await setImmediate();
+    client.connection.disconnect();
+    clear(observer);
+    gate.resolve();
+    await Promise.all([pendingJoin, pendingSend]);
+    assert.deepEqual(client.messages, []);
+    assert.deepEqual(observer.messages, []);
+});
+
+test('shutdown while authorization is pending never recreates chat or delivers a late result', async t => {
+    const gate = deferred();
+    const { bus, connect } = setup(t, () => gate.promise);
+    const client = connect('host');
+    const pending = client.connection.receive(JSON.stringify({ op: 'join', requestId: 'joining', ...chat }));
+    await setImmediate();
+    bus.close();
+    gate.resolve();
+    await pending;
+    assert.deepEqual(client.messages, []);
+    await assert.rejects(bus.send(chat, client.connection.id, eventName, null), { code: 'connection_unavailable' });
+    assert.throws(() => connect(), { code: 'connection_unavailable' });
+});
+
 test('close clears connected routing targets and repeated cleanup is safe', async t => {
     const { bus, connect } = setup(t);
     const client = connect();
