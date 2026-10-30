@@ -59,6 +59,11 @@ export function registerHttpRoutes(router, { host, issueTicket } = {}) {
         const image = await store.persona(requester, accountID, filename);
         return response.type(lookup(filename) || 'application/octet-stream').send(image);
     }));
+    router.get('/accounts/:accountID/personas/:filename/description', handler(async (request, response, requester) => {
+        const { accountID, filename } = request.params;
+        const store = await getResources();
+        return response.json(await store.personaDescription(requester, accountID, filename));
+    }));
     router.get('/accounts/:accountID/lore/:filename', handler(async (request, response, requester) => {
         const { accountID, filename } = request.params;
         const store = await getResources();

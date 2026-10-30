@@ -356,6 +356,34 @@ export class Resources {
 
     /**
      * @param {string} requester Authenticated handle.
+     * @param {string} accountID Persona's source handle.
+     * @param {string} filename Native persona-image filename.
+     * @returns {Promise<{description: string}>} Saved description for the named persona, active or inactive.
+     */
+    async personaDescription(requester, accountID, filename) {
+        validateIdentifier(filename);
+        await this.#authorizeShared(requester, accountID);
+        await this.#account(accountID);
+        const directories = this.#directories(accountID);
+        const avatar = await resourcePath(directories.avatars, filename);
+        if (!(await stat(avatar)).isFile()) {
+            throw failure(500);
+        }
+        let settings;
+        try {
+            settings = await readObject(directories.root, 'settings.json');
+        } catch {
+            throw failure(500);
+        }
+        const description = settings.power_user?.persona_descriptions?.[filename]?.description ?? '';
+        if (typeof description !== 'string') {
+            throw failure(500);
+        }
+        return { description };
+    }
+
+    /**
+     * @param {string} requester Authenticated handle.
      * @param {string} accountID Lorebook's source handle.
      * @param {string} filename Native lorebook filename including .json.
      * @returns {Promise<object>} Complete saved book without filtering entries.

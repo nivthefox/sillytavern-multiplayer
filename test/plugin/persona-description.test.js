@@ -36,6 +36,7 @@ for (const [handle, accountID] of [['owner', 'owner'], ['guest', 'owner'], ['gue
 for (const settings of [
     {},
     { power_user: {} },
+    { power_user: { persona_description: 'Do not fall back to the active persona' } },
     { power_user: { persona_descriptions: {} } },
     { power_user: { persona_descriptions: { 'history.png': {} } } },
     { power_user: { persona_descriptions: { 'history.png': { description: '' } } } },
