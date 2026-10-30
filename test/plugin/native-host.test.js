@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 import extract from 'png-chunks-extract';
@@ -14,34 +14,8 @@ import { createFixture } from './fixtures.js';
 async function nativeFixture(t) {
     const root = await mkdtemp(join(tmpdir(), 'multiplayer native host '));
     t.after(() => rm(root, { recursive: true, force: true }));
-    const files = {
-        'package.json': JSON.stringify({ type: 'module' }),
-        'node_modules/node-persist/package.json': JSON.stringify({ name: 'node-persist', main: 'index.cjs' }),
-        'node_modules/node-persist/index.cjs': `
-            const values = new Map();
-            module.exports = {
-                getItem: async key => {
-                    if (key === 'avatar:broken') { throw new Error('Storage unavailable'); }
-                    return values.get(key);
-                },
-                setItem: async (key, value) => values.set(key, value),
-            };
-        `,
-        'src/users.js': `
-            import storage from 'node-persist';
-            export const getAllUserHandles = async () => storage.getItem('handles');
-            export const toKey = handle => 'user:' + handle;
-            export const toAvatarKey = handle => 'avatar:' + handle;
-            export const getUserDirectories = handle => ({ root: '/native/' + handle });
-        `,
-        'src/character-card-parser.js': 'export const read = buffer => buffer.toString("utf8");',
-        'src/util.js': 'export const formatBytes = size => `${size} native bytes`;',
-    };
-    for (const [name, contents] of Object.entries(files)) {
-        const path = join(root, name);
-        await mkdir(dirname(path), { recursive: true });
-        await writeFile(path, contents);
-    }
+    await cp(new URL('../../fixtures/native-host/server/', import.meta.url), root, { recursive: true });
+    await cp(new URL('../../fixtures/native-host/node-persist/', import.meta.url), join(root, 'node_modules/node-persist'), { recursive: true });
     const storage = createRequire(join(root, 'package.json'))('node-persist');
     await storage.setItem('handles', ['owner', 'disabled']);
     const accounts = [{ handle: 'owner', name: 'Owner', enabled: true }, { handle: 'disabled', name: 'Disabled', enabled: false }];
