@@ -308,14 +308,14 @@ test('listing refresh retains separate native identities for equal IDs from diff
     assert.equal(new Set(groups.map(group => group.id)).size, 2);
 });
 
-test('guest card owner label and badge are present before opening the group', () => {
+test('guest card has only a badge for ownership before opening the group', () => {
     const f = fixture();
     const card = new Element();
     const avatar = new Element();
     avatar.className = 'avatar';
     card.append(avatar);
     f.adapter.decorateGroupCard(card, { owner: f.owner, group: f.group });
-    assert.ok(findByText(card, 'Owned by Host <&>'));
+    assert.equal(findByText(card, 'Owned by Host <&>'), undefined);
     assert.ok(avatar.children.some(child => child.title === 'Owned by Host <&>'), 'grid badge must overlay the portrait and carry an ownership tooltip');
     assert.equal(f.calls.some(call => call[0] === 'loadGroup'), false);
 });

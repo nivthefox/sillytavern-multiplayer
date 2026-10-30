@@ -58,6 +58,7 @@ async function fixture(t, transcriptStatus = 200) {
     const service = createChatOwnership({ account: { id: 'guest', name: 'Guest', avatar: null }, extensionSettings: {}, saveSettings() {}, getRequestHeaders: () => ({}), fetch, reportError: error => errors.push(error) });
     const native = {
         groups: [], characters: [], chat: [], selectedGroup: null, default_avatar: '/img/ai4.png',
+        entitiesFilter: { filterFunctions: { native: entities => entities } },
         eventSource: events, event_types: { CHAT_CHANGED: 'chat', CHARACTER_PAGE_LOADED: 'page' },
         clearChat: async ({ clearData = false } = {}) => {
             document.getElementById('chat').replaceChildren();
@@ -135,7 +136,7 @@ async function fixture(t, transcriptStatus = 200) {
     return { dom, document, native, adapter, calls, errors, card, envelope, events, setDiscoveryStatus: value => { discoveryStatus = value; } };
 }
 
-test('grid cards show the ownership badge tooltip without an ownership text line', async t => {
+test('grid and list cards show only the ownership badge tooltip, never an ownership text line', async t => {
     const f = await fixture(t);
     const manifest = JSON.parse(await readFile(new URL('../../manifest.json', import.meta.url), 'utf8'));
     if (manifest.css) {
@@ -146,12 +147,45 @@ test('grid cards show the ownership badge tooltip without an ownership text line
     f.document.body.classList.add('charListGrid');
     const label = f.card.querySelector('.multiplayer-owner-label');
     const badge = f.card.querySelector('.avatar .multiplayer-owner-badge');
-    assert.equal(f.dom.window.getComputedStyle(label).display, 'none');
+    assert.equal(label, null);
     assert.notEqual(f.dom.window.getComputedStyle(badge).display, 'none');
     assert.equal(badge.title, 'Owned by Host <&>');
     assert.equal(f.card.querySelector('.ch_name').textContent, 'Shared');
     f.document.body.classList.remove('charListGrid');
-    assert.notEqual(f.dom.window.getComputedStyle(label).display, 'none');
+    assert.equal(f.card.querySelector('.multiplayer-owner-label'), null);
+});
+
+test('shared groups retain native portrait-first card structure when native cards are not yet loaded', async t => {
+    const f = await fixture(t);
+    const templates = f.document.createElement('div'); templates.id = 'group_avatars_template';
+    templates.innerHTML = '<div class="avatar avatar_collage collage_1"><img alt="img1" class="img_1" src=""></div>';
+    f.document.body.append(templates);
+    f.card.innerHTML = '<div class="missing-avatar fa-solid fa-user-slash"></div><div class="flex-container wide100pLess70px gap5px group_select_container"><div class="wide100p group_name_block character_name_block"><div class="ch_name">Shared</div><small class="ch_additional_info group_select_counter">1</small></div></div>';
+    const contents = f.card.querySelector('.group_select_container');
+    f.adapter.decorateGroupCard(f.card, f.envelope);
+    const avatar = f.card.firstElementChild;
+    assert.equal(avatar.className, 'avatar avatar_collage collage_1');
+    assert.equal(avatar.querySelector('img').alt, 'img1');
+    assert.equal(f.card.children.length, 2);
+    assert.equal(f.card.lastElementChild, contents);
+    assert.equal(f.card.querySelector('.multiplayer-owner-label'), null);
+    assert.equal(avatar.querySelector('.multiplayer-owner-badge').title, 'Owned by Host <&>');
+});
+
+test('remote group members remain available to the group but never become standalone character-list entries', async t => {
+    const f = await fixture(t);
+    await f.adapter.openGroup('host', '42');
+    const remote = f.native.characters.find(character => character.avatar.startsWith('multiplayer-character:'));
+    const local = { avatar: 'NPC.png', name: 'Local NPC' };
+    f.native.characters.push(local);
+    const group = { type: 'group', item: f.native.groups[0] };
+    const localEntry = { type: 'character', item: local };
+    const entities = [{ type: 'character', item: remote }, localEntry, group];
+    const listed = Object.values(f.native.entitiesFilter.filterFunctions).reduce((items, filter) => filter(items), entities);
+    assert.deepEqual(listed, [localEntry, group]);
+    assert.ok(f.native.characters.includes(remote));
+    f.adapter.dispose();
+    assert.deepEqual(Object.keys(f.native.entitiesFilter.filterFunctions), ['native']);
 });
 
 test('guest card and stored-chat DOM clicks replace native handlers and load the requested owner transcript', async t => {
