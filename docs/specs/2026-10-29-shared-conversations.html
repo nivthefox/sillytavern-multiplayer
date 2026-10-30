@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shared Conversations — Specification</title>
+<style>
+    /*
+     * Theme — To change the visual style, replace this :root block
+     * with the contents of a theme file from the themes directory.
+     */
+    :root {
+        --spec-bg: #101010;
+        --spec-surface: #1a1a1a;
+        --spec-text: #d0d0d0;
+        --spec-text-muted: #707070;
+        --spec-heading: #f0f0f0;
+        --spec-accent: #0080C0;
+        --spec-accent-light: #0a1820;
+        --spec-border: #282828;
+        --spec-code-bg: #181818;
+        --spec-code-text: #0080C0;
+        --spec-edge-case-border: #0080C0;
+        --spec-prototype-bg: #0c0c0c;
+        --spec-prototype-border: #282828;
+        --spec-font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        --spec-font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
+        --spec-max-width: 52rem;
+        --spec-section-gap: 2.5rem;
+        --spec-mermaid-theme: dark;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       Base styles — uses custom properties; do not hardcode colors
+       ══════════════════════════════════════════════════════════════ */
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+        font-family: var(--spec-font-body);
+        line-height: 1.7;
+        color: var(--spec-text);
+        background: var(--spec-bg);
+    }
+
+    .spec {
+        max-width: var(--spec-max-width);
+        margin: 0 auto;
+        padding: 2.5rem 1.5rem;
+    }
+
+    /* ── Header ── */
+
+    .spec > header {
+        margin-bottom: var(--spec-section-gap);
+        padding-bottom: 1.5rem;
+        border-bottom: 2px solid var(--spec-accent);
+    }
+
+    .spec > header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        color: var(--spec-heading);
+        margin-bottom: 0.25rem;
+    }
+
+    .spec > header time {
+        color: var(--spec-text-muted);
+        font-size: 0.875rem;
+    }
+
+    /* ── Sections ── */
+
+    .spec section { margin-bottom: var(--spec-section-gap); }
+
+    .spec h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--spec-accent);
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--spec-border);
+    }
+
+    .spec h3 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--spec-heading);
+        margin-top: 1.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .spec h4 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--spec-heading);
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    /* ── Prose ── */
+
+    .spec a, .spec a:visited { color: var(--spec-accent); }
+    .spec p { margin-bottom: 0.75rem; }
+    .spec ul, .spec ol { margin-bottom: 0.75rem; padding-left: 1.5rem; }
+    .spec li { margin-bottom: 0.35rem; }
+    .spec strong { font-weight: 600; }
+
+    /* ── Code and pseudocode ── */
+
+    .spec pre {
+        background: var(--spec-code-bg);
+        color: var(--spec-code-text);
+        border: 1px solid var(--spec-border);
+        border-radius: 0.375rem;
+        padding: 1rem;
+        overflow-x: auto;
+        margin-bottom: 1rem;
+        font-family: var(--spec-font-mono);
+        font-size: 0.875rem;
+        line-height: 1.5;
+    }
+
+    .spec code {
+        font-family: var(--spec-font-mono);
+        font-size: 0.875em;
+        background: var(--spec-code-bg);
+        color: var(--spec-code-text);
+        padding: 0.125rem 0.375rem;
+        border-radius: 0.25rem;
+    }
+
+    .spec pre code { background: none; padding: 0; }
+
+    /* ── Mermaid diagrams ── */
+
+    /*
+     * Diagrams render at their natural size. A wide diagram may extend past
+     * --spec-max-width, centered on the column, up to the viewport; a narrow
+     * one is never stretched. Anything wider than the viewport scrolls.
+     */
+    .spec .mermaid {
+        width: max-content;
+        max-width: calc(100vw - 2rem);
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
+        overflow-x: auto;
+        margin: 1.5rem 0;
+        text-align: center;
+    }
+
+    /* ── Tables ── */
+
+    .spec table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+
+    .spec th, .spec td {
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--spec-border);
+        text-align: left;
+    }
+
+    .spec th { background: var(--spec-surface); font-weight: 600; }
+
+    /* ── Edge cases ── */
+
+    .spec .edge-case {
+        background: var(--spec-surface);
+        border-left: 3px solid var(--spec-edge-case-border);
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.75rem;
+        border-radius: 0 0.25rem 0.25rem 0;
+    }
+
+    .spec .edge-case dt { font-weight: 600; margin-bottom: 0.25rem; }
+    .spec .edge-case dd { color: var(--spec-text-muted); }
+
+    /* ── Testing criteria ── */
+
+    .spec .criteria li {
+        margin-bottom: 0.5rem;
+        list-style: none;
+        padding-left: 1.75rem;
+        position: relative;
+    }
+
+    .spec .criteria li::before {
+        content: "\2610";
+        position: absolute;
+        left: 0;
+    }
+
+    /* ── Prototypes ── */
+
+    .spec .prototype {
+        margin: 1.5rem 0;
+        padding: 1.5rem;
+        background: var(--spec-prototype-bg);
+        border: 1px solid var(--spec-prototype-border);
+        border-radius: 0.5rem;
+    }
+
+    .spec .prototype-note {
+        font-size: 0.8rem;
+        color: var(--spec-text-muted);
+        font-style: italic;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px dashed var(--spec-border);
+    }
+
+    /* ── Callouts ── */
+
+    .spec .callout {
+        background: var(--spec-surface);
+        border-left: 3px solid var(--spec-accent);
+        padding: 0.75rem 1rem;
+        margin: 1rem 0;
+        border-radius: 0 0.25rem 0.25rem 0;
+    }
+
+    /* ── Placeholders (incomplete sections in working drafts) ── */
+
+    .spec .placeholder {
+        color: var(--spec-text-muted);
+        font-style: italic;
+        padding: 1rem;
+        border: 1px dashed var(--spec-border);
+        border-radius: 0.375rem;
+        margin-bottom: 0.75rem;
+        text-align: center;
+    }
+
+    /* ── Print ── */
+
+    @media print {
+        body { max-width: none; padding: 1rem; color: #000; background: #fff; }
+        .spec .mermaid { position: static; transform: none; width: auto; max-width: 100%; overflow: visible; }
+        .spec .mermaid svg { max-width: 100%; height: auto; }
+        .spec > header { border-bottom-color: #000; }
+        .spec h2 { color: #000; border-bottom-color: #ccc; }
+        .spec .edge-case { border-left-color: #000; background: #f9f9f9; }
+        .spec .prototype { border-color: #ccc; background: #f9f9f9; }
+    }
+</style>
+</head>
+<body>
+<article class="spec">
+    <header>
+        <h1>Shared Conversations</h1>
+        <time datetime="2026-10-29">October 29, 2026</time>
+    </header>
+
+    <section id="problem">
+        <h2>Problem</h2>
+        <p>SillyTavern’s native chat handling saves whole transcripts from individual browsers and does not identify human-message authors by account. These mechanisms make it impossible to coordinate contributions from multiple human participants within a single scene.</p>
+        <p>Participants in a multi-account group chat need to play distinct characters in a shared scene with an AI GM, using a SillyTavern persona to represent each player’s character. The players need to add turns to the chat without triggering an AI response after every message. The account that owns the shared group needs to control when the AI GM responds to the conversation.</p>
+        <p>All accounts participating in the shared chat need to see the same message history, including edits and deletions. Each player’s messages need to remain attributable to the account that submitted them and the persona that account used to speak.</p>
+    </section>
+    <section id="solution">
+        <h2>Solution</h2>
+        <p>This work implements the addon entirely in the frontend/browser. It makes no server-side or Plugin changes.</p>
+        <p>When a guest is connected to a multiplayer shared chat, its native turn submission, transcript modification, and generation pathways are replaced with coordinated requests using the multiplayer Plugin for communication between browsers.</p>
+        <p>One connection by an owner is treated as authoritative by the Plugin, and processes those requests through SillyTavern, saving the resulting transcript. Additional owner tabs are treated as guests.</p>
+    </section>
+    <section id="behavior">
+        <h2>Behavior</h2>
+        <h3>Opening a shared chat</h3>
+        <p>When a user opens a shared chat, the addon reports which chat it has loaded to the Plugin and receives the connection’s authority status. On reconnection, the addon reloads the saved chat file without replacing the user’s current composer draft.</p>
+        <p>A shared chat is active for play only while the owner has it open in a browser connected to the multiplayer Plugin. Different chats can be active in separate owner tabs. Without a connected owner tab viewing the chat, guests can read its stored transcript and compose drafts, but turn submissions, edits, deletions, and AI generation requests are rejected.</p>
+        <h3>Adding a turn to the chat</h3>
+        <p>Sending a human turn adds a user message to the shared chat without automatically requesting an AI response.</p>
+        <p>The sending user immediately sees the submitted turn with a dashed border and a persistent “Saving…” label. The pending turn cannot be interacted with, and its message controls are visibly disabled. Once saving is confirmed, the turn adopts the normal message appearance and the addon enables the message interactions permitted for that user. Other connections viewing the chat display the new turn after receiving confirmation that it has been saved.</p>
+        <p>The addon assigns each turn, edit, or deletion request a unique submission identifier and retains it through retries and save confirmations, allowing a pending change to be matched to its saved outcome after reconnection.</p>
+        <p>The authoritative owner’s addon processes turns, edits, deletions, and generation requests in the order they enter its queue, including locally submitted requests. Each transcript save completes before the addon applies the next queued change.</p>
+        <div class="mermaid">
+sequenceDiagram
+    participant Guests as Guest / additional owner browsers
+    participant Plugin as Multiplayer Plugin
+    participant Owner as Authoritative owner browser
+    participant Server as SillyTavern server
+
+    Guests->>Guests: Sending browser displays pending, non-interactive turn
+    Guests->>Plugin: Submit human turn
+    Plugin->>Owner: Forward submission
+    Owner->>Owner: Queue turn, then apply when preceding save completes
+    Owner->>Server: Save updated transcript
+    Server-->>Owner: Save confirmation
+    Server-->>Plugin: Transcript saved
+    Plugin-->>Guests: Notify connections viewing the chat of the saved turn
+    Guests->>Guests: Sender confirms pending turn, other viewers display new turn
+        </div>
+        <h3>Identifying the speaker</h3>
+        <p>Each human turn retains SillyTavern’s native message data for the sending user’s persona name and portrait. The addon adds the submitting account’s identifier to the message’s extension metadata, preserving existing message data and metadata from other extensions.</p>
+        <p>The authoritative owner’s addon records the authenticated submitting account, not the account processing the turn. Changing the sending user’s active persona affects future turns without rewriting the speaker data on earlier messages.</p>
+        <h3>Message controls and permissions</h3>
+        <p>A guest account may edit or delete only messages attributed to that account. The addon hides all message controls on other messages, including AI responses. The owning account may edit only its own messages and AI responses; edit controls are hidden on guest-authored messages. It may delete any message. These permissions also apply when using an additional owner connection.</p>
+        <p>The owning account retains SillyTavern’s native bulk deletion, which removes the selected message and all messages after it. Guests have only single-message deletion; the addon hides bulk-deletion controls and rejects bulk-deletion requests from guest accounts.</p>
+        <p>Edits and deletions follow the same submission, queueing, saving, and notification flow as adding a turn to the chat. The authoritative owner’s addon checks edit and deletion requests against these account permissions before applying them.</p>
+        <h3>Requesting an AI turn</h3>
+        <p>The owning account uses SillyTavern’s existing generation controls: Send with an empty composer requests a group response using the group’s configured character-selection rules, and “Trigger a message from this character” requests a response from the selected group member. The addon permits these generation requests only from the owning account.</p>
+        <p>Generation requests follow the same submission route as human turns. The authoritative owner’s addon runs the requested generation through SillyTavern using the owner’s AI settings.</p>
+        <h3>Displaying the AI response</h3>
+        <p>When SillyTavern streams an AI response, the authoritative owner’s addon sends the live output through the Plugin to the other connections viewing that chat. Each receiving addon updates the same AI message as more text arrives, allowing everyone to follow the response together.</p>
+        <p>Streamed output remains provisional until its transcript save is confirmed. The saved message replaces the streaming preview rather than appearing as a duplicate. When streaming is disabled, other connections display the generated message after it has been saved.</p>
+        <h3>Player actions during an AI turn</h3>
+        <p>While an AI turn is in progress, all users viewing that chat can continue composing drafts, but the addon disables turn submission, message editing, and message deletion. The authoritative owner’s addon rejects those requests during generation rather than queueing them for later.</p>
+        <h3>Changing the authoritative owner connection</h3>
+        <p>The addon reports when its user leaves a shared chat. If the authoritative owner connection loses its Plugin connection, leaves the chat, or loses its authority assignment, its addon stops generation and stops processing or saving changes for that chat.</p>
+        <p>On receiving authority, the replacement owner’s addon loads the last saved transcript before telling the Plugin it is ready to process requests. During this handoff, the other users retain their displayed transcript and drafts, but turn submissions, edits, deletions, and generation requests are rejected until the replacement is ready.</p>
+        <div class="mermaid">
+sequenceDiagram
+    participant Viewers as Other viewing browsers
+    participant Plugin as Multiplayer Plugin
+    participant Previous as Previous authoritative owner
+    participant Replacement as Replacement owner browser
+    participant Server as SillyTavern server
+
+    Previous--xPlugin: Connection lost
+    Plugin-->>Viewers: Writing connection unavailable
+    Note over Viewers: Keep transcript and drafts visible
+    Plugin-->>Replacement: Authority assigned
+    Replacement->>Server: Load last saved transcript
+    Server-->>Replacement: Saved transcript
+    Replacement->>Plugin: Ready to process requests
+    Plugin-->>Viewers: Writing connection ready
+        </div>
+    </section>
+    <section id="edge-cases">
+        <h2>Edge Cases</h2>
+        <dl class="edge-case">
+            <dt>Concurrent edits to the same message</dt>
+            <dd>Edits use last-in-wins ordering based on arrival at the authoritative owner’s queue. Each successful edit replaces the saved message text, including when the edit was composed from an earlier version.</dd>
+        </dl>
+        <dl class="edge-case">
+            <dt>A request targets an already-deleted message</dt>
+            <dd>Reject an edit with “This message has been deleted” without restoring the message. Treat a repeated deletion as already completed.</dd>
+        </dl>
+        <dl class="edge-case">
+            <dt>The authoritative owner disconnects during AI generation</dt>
+            <dd>Remove the unsaved streaming preview, retain the last saved transcript, and show “AI generation interrupted.” A replacement owner connection does not restart generation automatically; the owning account requests another AI turn when ready.</dd>
+        </dl>
+        <dl class="edge-case">
+            <dt>A submitted turn, edit, or deletion fails to save</dt>
+            <dd>When saving is confirmed to have failed, keep the affected message visible with “Not saved” and offer Retry and Discard. A failed edit retains the attempted text as unsaved; a failed deletion leaves the message visible. Retry repeats the attempted change. Discard returns the display to the currently saved state, removing a new unsaved turn. Neither action overwrites the user’s current composer draft.</dd>
+        </dl>
+        <dl class="edge-case">
+            <dt>A connection drops before a change’s save confirmation arrives</dt>
+            <dd>On reconnection, the addon checks the submission’s status through the Plugin. A saved change is reflected in the displayed transcript without duplication; a change still being processed remains pending; a confirmed unsaved change uses the save-failure treatment above. The addon does not automatically resend a submission whose outcome is uncertain.</dd>
+        </dl>
+    </section>
+    <section id="dependencies">
+        <h2>Dependencies</h2>
+        <p>The Plugin specification must provide the following capabilities.</p>
+        <ul>
+            <li><strong>Authority assignment:</strong> identify browser connections by authenticated account, track which chat each connection has loaded, and supply each connection’s authority status. Assign the first owner connection loading a chat as that chat’s sole writing authority and explicitly notify it of the assignment. Connections belonging to guest accounts cannot acquire authority.</li>
+            <li><strong>Request routing:</strong> forward turns, edits, deletions, and generation requests from other connections viewing a chat to its authoritative owner connection, including the authenticated submitting account’s identifier.</li>
+            <li><strong>Committed-change notifications:</strong> notify the other connected accounts and tabs viewing a chat after a transcript change has been successfully saved. Receipt of a submission alone must not produce a committed-change notification.</li>
+            <li><strong>Submission reconciliation:</strong> correlate turn, edit, and deletion requests with their saved outcomes using the addon’s submission identifiers. Report whether a submission is saved, still processing, or confirmed unsaved after reconnection or authority transfer. Repeated submission of the same request must not apply the change more than once.</li>
+            <li><strong>Generation updates:</strong> supply the current generation status and notify connections viewing a chat when an AI turn starts and ends, whether or not streaming is enabled. Relay streamed AI output from the authoritative owner connection to the other connections viewing that chat, distinguishing provisional output from committed-change notifications.</li>
+            <li><strong>Authority transfer:</strong> when the authoritative connection disconnects or leaves the chat, automatically assign the longest-connected remaining owner connection with that chat loaded and notify it of its authority.</li>
+            <li><strong>Chat readiness:</strong> accept confirmation that an assigned owner connection has loaded the saved transcript and is ready to process requests. Inform connections viewing that chat when its writing connection becomes unavailable or ready.</li>
+        </ul>
+    </section>
+    <section id="testing-criteria">
+        <h2>Testing Criteria</h2>
+        <p>Tests run within the addon repository using fake Plugin responses, saved-file fixtures, and substitutes for SillyTavern’s interface, persistence, and generation. They require neither a live Plugin, a multi-account server, nor an AI service.</p>
+        <ul class="criteria">
+            <li>Given a user opening a shared chat, the addon reports that chat to the Plugin and adopts the supplied connection authority status.</li>
+            <li>Given a reconnecting user with an unsent composer draft, the addon reloads the saved chat file without replacing the draft.</li>
+            <li>Given a shared chat without a connected owner, its stored transcript remains readable and drafting remains available, while turn, edit, deletion, and generation requests are rejected.</li>
+            <li>Given separate owner connections assigned to different chats, activity in one chat does not change the other chat’s authority or displayed transcript.</li>
+            <li>Given a human turn submitted from a guest or additional owner connection, the addon forwards the request through the Plugin without independently saving the transcript or running generation.</li>
+            <li>Given a newly submitted human turn awaiting confirmation, only its sending browser displays the pending turn, with a dashed border, “Saving…” label, and disabled message controls.</li>
+            <li>Given remote and local requests arriving at the authoritative owner, they enter the same ordered queue and the next transcript change is not applied before the preceding save completes.</li>
+            <li>Given confirmation that a pending turn was saved, the sending browser displays exactly one saved message with normal appearance and the controls permitted for that account.</li>
+            <li>Given a committed edit or deletion notification, a viewing addon updates or removes the targeted message without independently saving the transcript.</li>
+            <li>Given two distinct change requests and a retry of the first, the distinct requests carry different submission identifiers and the retry retains the first identifier.</li>
+            <li>Given a forwarded human turn containing native persona data and extension metadata, the saved message preserves those values and records the authenticated sender’s account rather than the processing owner or an account claimed in the message payload.</li>
+            <li>Given a user changing their active persona between turns, the later turn uses the new persona while earlier messages retain their stored speaker data.</li>
+            <li>Given a guest requesting an edit or single-message deletion of their own saved message, the authoritative addon applies the permitted change through the ordered save flow.</li>
+            <li>Given a guest viewing a message not attributed to their account, including an AI response, all message controls are hidden and direct edit or deletion requests are rejected without changing the transcript.</li>
+            <li>Given the owning account editing its own message or an AI response, the edit is permitted; a guest-authored message instead has its edit controls hidden and rejects the owner’s edit request.</li>
+            <li>Given the owning account deleting a message authored by any account, the deletion is permitted.</li>
+            <li>Given an owner bulk-deletion request selecting a message, that message and all subsequent messages are removed through the coordinated save flow.</li>
+            <li>Given a guest account, bulk-deletion controls are hidden and a direct bulk-deletion request is rejected without partially deleting the selected range.</li>
+            <li>Given an additional owner connection, owner permissions remain available while change and generation requests are forwarded rather than independently saved or generated.</li>
+            <li>Given the owning account activating Send with an empty composer, the authoritative addon requests native group generation using the owner’s group-selection rules and AI settings.</li>
+            <li>Given the owning account activating “Trigger a message from this character,” the authoritative addon requests a response from the selected group member.</li>
+            <li>Given a guest generation request, no AI generation is started.</li>
+            <li>Given a human turn submitted through Send with text, the turn is processed without automatically starting AI generation.</li>
+            <li>Given successive streamed updates from the authoritative owner, the addon forwards the live output through the Plugin and receiving addons update one provisional AI message rather than appending a message per update.</li>
+            <li>Given save confirmation for a streamed AI message, its saved version replaces the provisional preview without duplication.</li>
+            <li>Given generation with streaming disabled, other viewing connections display the response only after its saved-message notification arrives.</li>
+            <li>Given an AI turn in progress, drafting remains available, turn submission and message editing and deletion are disabled, and directly submitted requests for those changes are rejected rather than queued.</li>
+            <li>Given the authoritative owner connection losing its Plugin connection, leaving the chat, or receiving authority revocation, its addon stops generation and further processing or saving of chat changes.</li>
+            <li>Given a user leaving a shared chat, the addon reports the departure to the Plugin.</li>
+            <li>Given authority assigned to a replacement owner connection, the addon loads the last saved transcript before reporting readiness or processing requests.</li>
+            <li>Given an authority handoff in progress, other viewing browsers retain their transcript and drafts while rejecting turn, edit, deletion, and generation requests until the replacement is ready.</li>
+            <li>Given two edits to the same message, both based on its original text, the later edit in the authoritative queue replaces the earlier saved edit.</li>
+            <li>Given an edit targeting an already-deleted message, the addon reports “This message has been deleted,” restores no message, and leaves any message now occupying the former transcript position unchanged.</li>
+            <li>Given a repeated deletion of an already-deleted message, the request is reported as completed without deleting another message.</li>
+            <li>Given the authoritative owner disconnecting during a streamed AI response, viewers discard the unsaved preview, retain the saved transcript, and see “AI generation interrupted,” without automatic generation by a replacement connection.</li>
+            <li>Given a confirmed failure to save a new turn, edit, or deletion, the affected message remains visible with “Not saved” and Retry and Discard actions; an attempted edit retains its unsaved text.</li>
+            <li>Given Retry on a failed change, the addon resubmits that change without replacing the current composer draft.</li>
+            <li>Given Discard on a failed change, the display returns to the currently saved state, removing a new unsaved turn or restoring the saved state of an edited or deletion-targeted message without replacing the composer draft.</li>
+            <li>Given reconnection after an unconfirmed change, the addon requests the submission’s status rather than automatically resending it.</li>
+            <li>Given a reconciliation response identifying the change as saved, the display reflects that saved outcome without duplicating the message or applying the change again.</li>
+            <li>Given a reconciliation response identifying the change as still processing, its pending state remains.</li>
+            <li>Given a reconciliation response identifying the change as confirmed unsaved, the save-failure controls appear.</li>
+        </ul>
+    </section>
+</article>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+    // Render every diagram type at its natural width so the .mermaid
+    // container, not the text column, decides how wide it can grow.
+    const naturalWidth = Object.fromEntries(
+        ['flowchart', 'sequence', 'class', 'state', 'er', 'gantt', 'journey',
+         'pie', 'gitGraph', 'timeline', 'mindmap', 'requirement', 'c4']
+            .map(type => [type, { useMaxWidth: false }])
+    );
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: getComputedStyle(document.documentElement)
+            .getPropertyValue('--spec-mermaid-theme').trim() || 'default',
+        securityLevel: 'loose',
+        ...naturalWidth
+    });
+</script>
+</body>
+</html>

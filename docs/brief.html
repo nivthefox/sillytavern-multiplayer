@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SillyTavern Multiplayer — Concept Brief</title>
+<style>
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #151820; color: #e4e7ee; }
+body { max-width: 760px; margin: 48px auto; padding: 0 24px 48px; line-height: 1.65; }
+h1, h2 { line-height: 1.25; } h1 { font-size: 2rem; } h2 { margin-top: 2rem; font-size: 1.25rem; color: #b8ceff; }
+p, li { max-width: 70ch; } li { margin: .45rem 0; } .status { color: #aab3c5; font-size: .9rem; }
+</style>
+</head>
+<body>
+<h1>SillyTavern Multiplayer</h1>
+<p class="status">Working concept brief · October 29, 2026</p>
+<h2>Purpose</h2>
+<p>Multiple humans play distinct characters in a shared scene with an AI GM. The motivating use is a couple playing Duo Fate together, with support for a variable number of participants.</p>
+<h2>Three core pieces</h2>
+<ol>
+<li><strong>Communication bus.</strong> Moves messages between participants through the SillyTavern server. Integration code and extensions can send messages and attach event listeners that take actions when messages arrive.</li>
+<li><strong>Shared human conversation.</strong> Builds on SillyTavern’s group-chat interface. Players exchange successive user turns independently of AI generation, preserving speaker identity and a common scene history.</li>
+<li><strong>Chat ownership.</strong> One participant owns the scene. Their browser runs generation and authoritative extension workflows. The owner supplies the world, NPC cards, lorebooks, and AI settings, and explicitly starts an AI turn with a button. Ownership also provides shared read access to the scene’s loaded lorebooks: all participants read the same source, including character sheets stored there by RPG Companion.</li>
+</ol>
+<h2>Creating a shared chat</h2>
+<p>The owner uses SillyTavern’s existing “Create New Chat Group” flow. Alongside “Add Members” for character cards, an “Add Other Accounts” section lets the owner select accounts on the same server to participate in the shared chat.</p>
+<h2>Guest experience</h2>
+<p>The shared chat group appears in each participant’s normal character listing. Guests see an ownership indicator on its card identifying it as someone else’s shared group. Opening it uses the familiar chat interface; the card and conversation otherwise look like ordinary SillyTavern groups and chats. Guests can open and read the scene while the owner is offline.</p>
+<h2>Participation</h2>
+<p>Participants log in with accounts on the same SillyTavern server. Each player participates through one active SillyTavern persona representing their PC.</p>
+<p>Guests can edit and delete their own messages. The owner can edit AI responses and their own messages. The owner can delete messages throughout the shared history.</p>
+<p>The owner’s browser must be available for play to advance. During an owner browser refresh, guests remain connected with their transcript and drafts while action submission and generation pause. Play resumes after the owner restores the session. Guests can disconnect and rejoin independently.</p>
+<h2>Specifications emerging from the concept</h2>
+<h3>Plugin</h3>
+<ul>
+<li><strong>Communication bus:</strong> participant addressing, message delivery, and extension listeners.</li>
+</ul>
+<h3>Multiplayer addon</h3>
+<ul>
+<li><strong>Shared conversation:</strong> synchronized history, player identities, and separation of human turns from AI generation.</li>
+<li><strong>Chat ownership:</strong> adding participant accounts through group creation, generation authority, session recovery, shared access to group cards and portraits, and making each guest’s active persona available to the owner for inclusion in the AI context.</li>
+<li><strong>Shared lorebook access:</strong> a separate specification for the resource-sharing responsibilities within chat ownership.</li>
+</ul>
+</body>
+</html>

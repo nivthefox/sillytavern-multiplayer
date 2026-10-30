@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat Ownership — Specification</title>
+<style>
+    /*
+     * Theme — To change the visual style, replace this :root block
+     * with the contents of a theme file from the themes directory.
+     */
+    :root {
+        --spec-bg: #101010;
+        --spec-surface: #1a1a1a;
+        --spec-text: #d0d0d0;
+        --spec-text-muted: #707070;
+        --spec-heading: #f0f0f0;
+        --spec-accent: #0080C0;
+        --spec-accent-light: #0a1820;
+        --spec-border: #282828;
+        --spec-code-bg: #181818;
+        --spec-code-text: #0080C0;
+        --spec-edge-case-border: #0080C0;
+        --spec-prototype-bg: #0c0c0c;
+        --spec-prototype-border: #282828;
+        --spec-font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        --spec-font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
+        --spec-max-width: 52rem;
+        --spec-section-gap: 2.5rem;
+        --spec-mermaid-theme: dark;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       Base styles — uses custom properties; do not hardcode colors
+       ══════════════════════════════════════════════════════════════ */
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+        font-family: var(--spec-font-body);
+        line-height: 1.7;
+        color: var(--spec-text);
+        background: var(--spec-bg);
+    }
+
+    .spec {
+        max-width: var(--spec-max-width);
+        margin: 0 auto;
+        padding: 2.5rem 1.5rem;
+    }
+
+    /* ── Header ── */
+
+    .spec > header {
+        margin-bottom: var(--spec-section-gap);
+        padding-bottom: 1.5rem;
+        border-bottom: 2px solid var(--spec-accent);
+    }
+
+    .spec > header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        color: var(--spec-heading);
+        margin-bottom: 0.25rem;
+    }
+
+    .spec > header time {
+        color: var(--spec-text-muted);
+        font-size: 0.875rem;
+    }
+
+    /* ── Sections ── */
+
+    .spec section { margin-bottom: var(--spec-section-gap); }
+
+    .spec h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--spec-accent);
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--spec-border);
+    }
+
+    .spec h3 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--spec-heading);
+        margin-top: 1.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .spec h4 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--spec-heading);
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    /* ── Prose ── */
+
+    .spec a, .spec a:visited { color: var(--spec-accent); }
+    .spec p { margin-bottom: 0.75rem; }
+    .spec ul, .spec ol { margin-bottom: 0.75rem; padding-left: 1.5rem; }
+    .spec li { margin-bottom: 0.35rem; }
+    .spec strong { font-weight: 600; }
+
+    /* ── Code and pseudocode ── */
+
+    .spec pre {
+        background: var(--spec-code-bg);
+        color: var(--spec-code-text);
+        border: 1px solid var(--spec-border);
+        border-radius: 0.375rem;
+        padding: 1rem;
+        overflow-x: auto;
+        margin-bottom: 1rem;
+        font-family: var(--spec-font-mono);
+        font-size: 0.875rem;
+        line-height: 1.5;
+    }
+
+    .spec code {
+        font-family: var(--spec-font-mono);
+        font-size: 0.875em;
+        background: var(--spec-code-bg);
+        color: var(--spec-code-text);
+        padding: 0.125rem 0.375rem;
+        border-radius: 0.25rem;
+    }
+
+    .spec pre code { background: none; padding: 0; }
+
+    /* ── Mermaid diagrams ── */
+
+    /*
+     * Diagrams render at their natural size. A wide diagram may extend past
+     * --spec-max-width, centered on the column, up to the viewport; a narrow
+     * one is never stretched. Anything wider than the viewport scrolls.
+     */
+    .spec .mermaid {
+        width: max-content;
+        max-width: calc(100vw - 2rem);
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
+        overflow-x: auto;
+        margin: 1.5rem 0;
+        text-align: center;
+    }
+
+    /* ── Tables ── */
+
+    .spec table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+
+    .spec th, .spec td {
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--spec-border);
+        text-align: left;
+    }
+
+    .spec th { background: var(--spec-surface); font-weight: 600; }
+
+    /* ── Edge cases ── */
+
+    .spec .edge-case {
+        background: var(--spec-surface);
+        border-left: 3px solid var(--spec-edge-case-border);
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.75rem;
+        border-radius: 0 0.25rem 0.25rem 0;
+    }
+
+    .spec .edge-case dt { font-weight: 600; margin-bottom: 0.25rem; }
+    .spec .edge-case dd { color: var(--spec-text-muted); }
+
+    /* ── Testing criteria ── */
+
+    .spec .criteria li {
+        margin-bottom: 0.5rem;
+        list-style: none;
+        padding-left: 1.75rem;
+        position: relative;
+    }
+
+    .spec .criteria li::before {
+        content: "\2610";
+        position: absolute;
+        left: 0;
+    }
+
+    /* ── Prototypes ── */
+
+    .spec .prototype {
+        margin: 1.5rem 0;
+        padding: 1.5rem;
+        background: var(--spec-prototype-bg);
+        border: 1px solid var(--spec-prototype-border);
+        border-radius: 0.5rem;
+    }
+
+    .spec .prototype-note {
+        font-size: 0.8rem;
+        color: var(--spec-text-muted);
+        font-style: italic;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px dashed var(--spec-border);
+    }
+
+    /* ── Callouts ── */
+
+    .spec .callout {
+        background: var(--spec-surface);
+        border-left: 3px solid var(--spec-accent);
+        padding: 0.75rem 1rem;
+        margin: 1rem 0;
+        border-radius: 0 0.25rem 0.25rem 0;
+    }
+
+    /* ── Placeholders (incomplete sections in working drafts) ── */
+
+    .spec .placeholder {
+        color: var(--spec-text-muted);
+        font-style: italic;
+        padding: 1rem;
+        border: 1px dashed var(--spec-border);
+        border-radius: 0.375rem;
+        margin-bottom: 0.75rem;
+        text-align: center;
+    }
+
+    /* ── Print ── */
+
+    @media print {
+        body { max-width: none; padding: 1rem; color: #000; background: #fff; }
+        .spec .mermaid { position: static; transform: none; width: auto; max-width: 100%; overflow: visible; }
+        .spec .mermaid svg { max-width: 100%; height: auto; }
+        .spec > header { border-bottom-color: #000; }
+        .spec h2 { color: #000; border-bottom-color: #ccc; }
+        .spec .edge-case { border-left-color: #000; background: #f9f9f9; }
+        .spec .prototype { border-color: #ccc; background: #f9f9f9; }
+    }
+</style>
+</head>
+<body>
+<article class="spec">
+    <header>
+        <h1>Chat Ownership</h1>
+        <time datetime="2026-10-29">October 29, 2026</time>
+    </header>
+
+    <section id="problem">
+        <h2>Problem</h2>
+        <p>A scene owner needs to create a persistent SillyTavern Character Group Chat containing multiple Account cards representing participating server accounts and multiple Character cards representing scene characters, then add a chat to that group and reopen its transcript.</p>
+        <p>Selected guests need to discover the shared group in their normal character listing and open and read its chats, including while the owner is offline. This establishes a readable shared scene before participants begin playing together.</p>
+        <p>SillyTavern currently treats group members as local characters and serves groups, chats, and character portraits from the logged-in account’s storage. It does not provide the cross-account discovery and authorized reading needed for this experience.</p>
+    </section>
+    <section id="solution">
+        <h2>Solution</h2>
+        <p>This work implements the addon entirely in the frontend/browser. It makes no server-side or Plugin changes.</p>
+        <p>The creating account owns the group. Its stored group and transcripts are the authoritative source; guests access that source rather than independent copies.</p>
+        <p>The addon extends SillyTavern’s existing group creation and chat interface. Character membership retains its native representation. Account membership uses account identifiers, with each Account card displaying the account’s name and account avatar. Ownership and account membership are stored in the group’s JSON record alongside native character membership.</p>
+        <p>The addon presents shared groups in each participant’s normal character listing, identifies their owner, and displays their chats in SillyTavern’s familiar chat interface. It loads the group’s character cards and portraits with the transcript so guests can read the scene in context.</p>
+    </section>
+    <section id="behavior">
+        <h2>Behavior</h2>
+        <h3>Creating a group</h3>
+        <p>The existing Create New Chat Group screen shows the creating account automatically as owner. Alongside Add Members, an Add Other Accounts section lets the creator select participating accounts. The creator does not select themselves.</p>
+        <p>Creation requires at least one Character card. Additional accounts are optional.</p>
+        <h3>Account discoverability</h3>
+        <p>Enabled accounts are eligible for selection by default, including when discreet login is enabled. Each account has an explicit opt-out setting, “Allow others to add me to shared groups,” enabled by default. Turning it off hides that account from future participant listings; existing memberships remain unchanged. Accounts already visible in an open selection list remain selectable and can be added.</p>
+        <h3>Creating and reading chats</h3>
+        <p>Adding a chat uses SillyTavern’s native New Chat behavior. Existing native transcript import behavior remains unchanged.</p>
+        <p>Guests can select and open a shared group’s chats and read their transcripts. For guest interactions beyond discovery, opening, and reading, broken behavior and unsecured changes—including changes to the owner’s group or transcripts—are acceptable in this milestone. Implementers must not hide controls, prevent writes, or add permission enforcement for those interactions.</p>
+        <h3>Ownership indicators</h3>
+        <p>A group owned by another account displays “Owned by &lt;account name&gt;” in its card. In grid view, a small badge overlays its circular portrait before the card is opened; the badge’s tooltip carries the same ownership label. The viewer’s own groups retain their normal icons.</p>
+    </section>
+    <section id="edge-cases">
+        <h2>Edge Cases</h2>
+        <dl class="edge-case">
+            <dt>Shared chat fails to load</dt>
+            <dd>Show a load error and leave the stored chat untouched. Do not treat a failed load as an empty new chat.</dd>
+        </dl>
+        <dl class="edge-case">
+            <dt>Portrait is missing or fails to load</dt>
+            <dd>Use SillyTavern’s default avatar and continue displaying the group or transcript.</dd>
+        </dl>
+    </section>
+    <section id="dependencies">
+        <h2>Dependencies</h2>
+        <p>The Plugin specification must provide the following capabilities.</p>
+        <ul>
+            <li><strong>Account selection:</strong> supply authenticated users with eligible account identifiers, display names, and account avatars according to Account discoverability. Persist each account’s opt-out preference. Accept selections from an already displayed list even if an account subsequently opts out.</li>
+            <li><strong>Group persistence:</strong> accept and retain ownership and account membership when creating and saving group records.</li>
+            <li><strong>Shared-group discovery:</strong> supply the current account’s participating groups and their owner identities.</li>
+            <li><strong>Shared-resource reads:</strong> supply group details, chat listings, transcripts, and the character cards and portraits needed to display the owner’s scene from another participating account. These reads must work without the owner’s browser being connected.</li>
+        </ul>
+    </section>
+    <section id="testing-criteria">
+        <h2>Testing Criteria</h2>
+        <p>Tests run within the addon repository using fake Plugin responses and native-interface substitutes. They require neither a live Plugin nor a multi-account server. Other guest interactions require no functional tests; review verifies that the addon introduces no controls or guards prohibited by Creating and reading chats.</p>
+        <ul class="criteria">
+            <li>Given a logged-in account opening group creation, that account appears automatically as owner alongside character and other-account selection controls.</li>
+            <li>Given a creation form without Character cards, submission does not create a group.</li>
+            <li>Given a creation form with a Character card and no additional accounts, submission creates an owner-only group.</li>
+            <li>Given multiple selected Character and Account cards, the saved group retains the creator’s ownership and both sets of membership after reload.</li>
+            <li>Given eligible account records, Account cards display the supplied names and account avatars.</li>
+            <li>Given an account with no saved discoverability preference, “Allow others to add me to shared groups” is on by default.</li>
+            <li>Given an account disabling discoverability, the addon persists the preference without requesting removal of existing memberships.</li>
+            <li>Given an eligible-account response while discreet login is enabled, the addon displays the supplied accounts for selection.</li>
+            <li>Given an account opting out after its card was displayed, the existing selection remains available for submission without a new eligibility check.</li>
+            <li>Given an existing group, adding a chat invokes native New Chat behavior and makes the resulting chat selectable within that group.</li>
+            <li>Given shared groups returned for the current account, they appear in the normal character listing.</li>
+            <li>Given a group owned by another account, its card identifies the owner and its grid portrait carries the ownership badge and tooltip.</li>
+            <li>Given a group owned by the current account, its grid portrait has no guest ownership badge.</li>
+            <li>Given an owner or guest selecting a stored chat, the supplied transcript renders in order with its speaker identities and available portraits.</li>
+            <li>Given shared resources available while the owner’s browser is disconnected, a guest can list and open the group’s chats without contacting that browser.</li>
+            <li>Given a failed shared-chat read, the addon displays a load error and issues no request to initialize or overwrite that chat.</li>
+            <li>Given a missing or failed portrait, the default avatar appears and the group or transcript remains displayed.</li>
+        </ul>
+    </section>
+</article>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+    // Render every diagram type at its natural width so the .mermaid
+    // container, not the text column, decides how wide it can grow.
+    const naturalWidth = Object.fromEntries(
+        ['flowchart', 'sequence', 'class', 'state', 'er', 'gantt', 'journey',
+         'pie', 'gitGraph', 'timeline', 'mindmap', 'requirement', 'c4']
+            .map(type => [type, { useMaxWidth: false }])
+    );
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: getComputedStyle(document.documentElement)
+            .getPropertyValue('--spec-mermaid-theme').trim() || 'default',
+        securityLevel: 'loose',
+        ...naturalWidth
+    });
+</script>
+</body>
+</html>

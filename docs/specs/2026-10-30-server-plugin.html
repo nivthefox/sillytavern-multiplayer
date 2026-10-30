@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Server Plugin — Specification</title>
+<style>
+    /*
+     * Theme — To change the visual style, replace this :root block
+     * with the contents of a theme file from the themes directory.
+     */
+    :root {
+        --spec-bg: #101010;
+        --spec-surface: #1a1a1a;
+        --spec-text: #d0d0d0;
+        --spec-text-muted: #707070;
+        --spec-heading: #f0f0f0;
+        --spec-accent: #0080C0;
+        --spec-accent-light: #0a1820;
+        --spec-border: #282828;
+        --spec-code-bg: #181818;
+        --spec-code-text: #0080C0;
+        --spec-edge-case-border: #0080C0;
+        --spec-prototype-bg: #0c0c0c;
+        --spec-prototype-border: #282828;
+        --spec-font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        --spec-font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
+        --spec-max-width: 52rem;
+        --spec-section-gap: 2.5rem;
+        --spec-mermaid-theme: dark;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       Base styles — uses custom properties; do not hardcode colors
+       ══════════════════════════════════════════════════════════════ */
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+        font-family: var(--spec-font-body);
+        line-height: 1.7;
+        color: var(--spec-text);
+        background: var(--spec-bg);
+    }
+
+    .spec {
+        max-width: var(--spec-max-width);
+        margin: 0 auto;
+        padding: 2.5rem 1.5rem;
+    }
+
+    /* ── Header ── */
+
+    .spec > header {
+        margin-bottom: var(--spec-section-gap);
+        padding-bottom: 1.5rem;
+        border-bottom: 2px solid var(--spec-accent);
+    }
+
+    .spec > header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        color: var(--spec-heading);
+        margin-bottom: 0.25rem;
+    }
+
+    .spec > header time {
+        color: var(--spec-text-muted);
+        font-size: 0.875rem;
+    }
+
+    /* ── Sections ── */
+
+    .spec section { margin-bottom: var(--spec-section-gap); }
+
+    .spec h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--spec-accent);
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--spec-border);
+    }
+
+    .spec h3 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--spec-heading);
+        margin-top: 1.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .spec h4 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--spec-heading);
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    /* ── Prose ── */
+
+    .spec a, .spec a:visited { color: var(--spec-accent); }
+    .spec p { margin-bottom: 0.75rem; }
+    .spec ul, .spec ol { margin-bottom: 0.75rem; padding-left: 1.5rem; }
+    .spec li { margin-bottom: 0.35rem; }
+    .spec strong { font-weight: 600; }
+
+    /* ── Code and pseudocode ── */
+
+    .spec pre {
+        background: var(--spec-code-bg);
+        color: var(--spec-code-text);
+        border: 1px solid var(--spec-border);
+        border-radius: 0.375rem;
+        padding: 1rem;
+        overflow-x: auto;
+        margin-bottom: 1rem;
+        font-family: var(--spec-font-mono);
+        font-size: 0.875rem;
+        line-height: 1.5;
+    }
+
+    .spec code {
+        font-family: var(--spec-font-mono);
+        font-size: 0.875em;
+        background: var(--spec-code-bg);
+        color: var(--spec-code-text);
+        padding: 0.125rem 0.375rem;
+        border-radius: 0.25rem;
+    }
+
+    .spec pre code { background: none; padding: 0; }
+
+    /* ── Mermaid diagrams ── */
+
+    /*
+     * Diagrams render at their natural size. A wide diagram may extend past
+     * --spec-max-width, centered on the column, up to the viewport; a narrow
+     * one is never stretched. Anything wider than the viewport scrolls.
+     */
+    .spec .mermaid {
+        width: max-content;
+        max-width: calc(100vw - 2rem);
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
+        overflow-x: auto;
+        margin: 1.5rem 0;
+        text-align: center;
+    }
+
+    /* ── Tables ── */
+
+    .spec table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+
+    .spec th, .spec td {
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--spec-border);
+        text-align: left;
+    }
+
+    .spec th { background: var(--spec-surface); font-weight: 600; }
+
+    /* ── Edge cases ── */
+
+    .spec .edge-case {
+        background: var(--spec-surface);
+        border-left: 3px solid var(--spec-edge-case-border);
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.75rem;
+        border-radius: 0 0.25rem 0.25rem 0;
+    }
+
+    .spec .edge-case dt { font-weight: 600; margin-bottom: 0.25rem; }
+    .spec .edge-case dd { color: var(--spec-text-muted); }
+
+    /* ── Testing criteria ── */
+
+    .spec .criteria li {
+        margin-bottom: 0.5rem;
+        list-style: none;
+        padding-left: 1.75rem;
+        position: relative;
+    }
+
+    .spec .criteria li::before {
+        content: "\2610";
+        position: absolute;
+        left: 0;
+    }
+
+    /* ── Prototypes ── */
+
+    .spec .prototype {
+        margin: 1.5rem 0;
+        padding: 1.5rem;
+        background: var(--spec-prototype-bg);
+        border: 1px solid var(--spec-prototype-border);
+        border-radius: 0.5rem;
+    }
+
+    .spec .prototype-note {
+        font-size: 0.8rem;
+        color: var(--spec-text-muted);
+        font-style: italic;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px dashed var(--spec-border);
+    }
+
+    /* ── Callouts ── */
+
+    .spec .callout {
+        background: var(--spec-surface);
+        border-left: 3px solid var(--spec-accent);
+        padding: 0.75rem 1rem;
+        margin: 1rem 0;
+        border-radius: 0 0.25rem 0.25rem 0;
+    }
+
+    /* ── Placeholders (incomplete sections in working drafts) ── */
+
+    .spec .placeholder {
+        color: var(--spec-text-muted);
+        font-style: italic;
+        padding: 1rem;
+        border: 1px dashed var(--spec-border);
+        border-radius: 0.375rem;
+        margin-bottom: 0.75rem;
+        text-align: center;
+    }
+
+    /* ── Print ── */
+
+    @media print {
+        body { max-width: none; padding: 1rem; color: #000; background: #fff; }
+        .spec .mermaid { position: static; transform: none; width: auto; max-width: 100%; overflow: visible; }
+        .spec .mermaid svg { max-width: 100%; height: auto; }
+        .spec > header { border-bottom-color: #000; }
+        .spec h2 { color: #000; border-bottom-color: #ccc; }
+        .spec .edge-case { border-left-color: #000; background: #f9f9f9; }
+        .spec .prototype { border-color: #ccc; background: #f9f9f9; }
+    }
+</style>
+</head>
+<body>
+<article class="spec">
+    <header>
+        <h1>Server Plugin</h1>
+        <time datetime="2026-10-30">October 30, 2026</time>
+    </header>
+
+    <section id="problem">
+        <h2>Problem</h2>
+        <p>SillyTavern users playing together in a shared multiplayer group chat need access to the same scene resources and conversation history across separate accounts. Their browsers and addons need to exchange messages to coordinate activity in that shared chat.</p>
+        <p>SillyTavern currently isolates those resources by account and provides no communication mechanism between participating browsers.</p>
+    </section>
+    <section id="solution">
+        <h2>Solution</h2>
+        <p>The multiplayer addon includes its server plugin and browser event-bus library as parts of one project. The server plugin provides two components:</p>
+        <ul>
+            <li><strong>HTTP router:</strong> exposes two resource route families. <code>/accounts</code> provides account discovery and authorized access to character cards, portraits, and lorebooks nested under their source account. <code>/chats</code> provides shared-group discovery, group details, chat listings, and chat transcripts. Resource identities include their source account to distinguish matching names or IDs.</li>
+            <li><strong>Event bus:</strong> carries messages from clients to the server, which routes them to other clients. Multiplayer features use this transport; message meaning and the actions triggered belong to its consumers.</li>
+        </ul>
+        <p>The session-owning browser remains responsible for AI generation and authoritative frontend workflows.</p>
+    </section>
+    <section id="behavior">
+        <h2>Behavior</h2>
+        <h3>HTTP conventions</h3>
+        <p>Paths below are relative to the plugin’s API mount. The resource routes below are <code>GET</code> requests with no request body. JSON responses use <code>application/json</code>. Account identity comes from the native authenticated session, not a caller-supplied identity. Route identifiers select resources, not filesystem paths; they cannot escape their source account’s resource directory.</p>
+        <h4>Account listing — <code>GET /accounts</code></h4>
+        <p>For an authenticated caller, return an array of enabled accounts whose “Allow others to add me to shared groups” setting is enabled. Read this preference from each account’s native extension settings; an absent preference means enabled. Discreet login does not affect this listing. Include the requesting account when it meets the same eligibility rules; the addon handles filtering.</p>
+        <p>Each record contains only the following fields:</p>
+        <table>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>id</code></td><td>SillyTavern account handle.</td></tr>
+                <tr><td><code>name</code></td><td>Account display name.</td></tr>
+                <tr><td><code>avatar</code></td><td>Avatar image data URL, or <code>null</code> when unset.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <thead><tr><th>Status</th><th>Outcome</th></tr></thead>
+            <tbody>
+                <tr><td>200</td><td>Return the array of eligible account records. No eligible accounts returns an empty array.</td></tr>
+                <tr><td>403</td><td>The requester is unauthenticated.</td></tr>
+                <tr><td>500</td><td>The listing cannot be read or parsed. Do not substitute an empty listing.</td></tr>
+            </tbody>
+        </table>
+        <h4>Character card — <code>GET /accounts/&lt;accountID&gt;/characters/&lt;characterID&gt;/card</code></h4>
+        <p>The source account is identified by its SillyTavern handle. The character identifier is its native card filename, including <code>.png</code>, URL-encoded as one path segment.</p>
+        <p>Access requires an authenticated requester who participates in a shared group owned by the source account and containing that character. Access does not require an open chat.</p>
+        <table>
+            <thead><tr><th>Status</th><th>Outcome</th></tr></thead>
+            <tbody>
+                <tr><td>200</td><td>Return the native character-card JSON.</td></tr>
+                <tr><td>403</td><td>The requester is unauthenticated or does not meet this route’s access rule. Takes priority over 404.</td></tr>
+                <tr><td>404</td><td>After access is established, the source account or character file does not exist.</td></tr>
+                <tr><td>500</td><td>The character file exists but cannot be read or parsed. Do not substitute an empty card.</td></tr>
+            </tbody>
+        </table>
+        <h4>Character image — <code>GET /accounts/&lt;accountID&gt;/characters/&lt;characterID&gt;</code></h4>
+        <p>Use the identifiers and access rules defined for Character card.</p>
+        <table>
+            <thead><tr><th>Status</th><th>Outcome</th></tr></thead>
+            <tbody>
+                <tr><td>200</td><td>Return the original PNG unchanged, including embedded card metadata, with content type <code>image/png</code>.</td></tr>
+                <tr><td>403</td><td>The requester is unauthenticated or does not meet this route’s access rule. Takes priority over 404.</td></tr>
+                <tr><td>404</td><td>After access is established, the source account or character file does not exist.</td></tr>
+                <tr><td>500</td><td>The character file exists but cannot be read.</td></tr>
+            </tbody>
+        </table>
+        <h4>Persona image — <code>GET /accounts/&lt;accountID&gt;/personas/&lt;filename&gt;</code></h4>
+        <p>The source account is identified by its SillyTavern handle. The filename identifies an image in that account’s native persona-avatar storage and is URL-encoded as one path segment.</p>
+        <p>Access requires an authenticated requester who shares a group with the source account. Neither account needs to have a chat open. This grants reads of any known persona-image filename in that account, not just its active persona, so historical messages can retain their portraits.</p>
+        <table>
+            <thead><tr><th>Status</th><th>Outcome</th></tr></thead>
+            <tbody>
+                <tr><td>200</td><td>Return the original image with its image content type.</td></tr>
+                <tr><td>403</td><td>The requester is unauthenticated or does not meet this route’s access rule. Takes priority over 404.</td></tr>
+                <tr><td>404</td><td>After access is established, the source account or image file does not exist.</td></tr>
+                <tr><td>500</td><td>The image file exists but cannot be read.</td></tr>
+            </tbody>
+        </table>
+        <h4>Lorebook — <code>GET /accounts/&lt;accountID&gt;/lore/&lt;filename&gt;</code></h4>
+        <p>The source account is identified by its SillyTavern handle. The filename is the native lorebook filename, including <code>.json</code>, URL-encoded as one path segment.</p>
+        <p>Access requires an authenticated requester who shares a group with the source account. This grants reads of any known lorebook filename in that account, including guest persona books, without a server-side advertised-book allowlist.</p>
+        <table>
+            <thead><tr><th>Status</th><th>Outcome</th></tr></thead>
+            <tbody>
+                <tr><td>200</td><td>Return the complete saved lorebook JSON, including disabled entries.</td></tr>
+                <tr><td>403</td><td>The requester is unauthenticated or does not meet this route’s access rule. Takes priority over 404.</td></tr>
+                <tr><td>404</td><td>After access is established, the source account or lorebook file does not exist.</td></tr>
+                <tr><td>500</td><td>The lorebook file exists but cannot be read or parsed. Do not substitute an empty book.</td></tr>
+            </tbody>
+        </table>
+        <h4>Shared-group listing — <code>GET /chats</code></h4>
+        <p>Return groups the authenticated requester owns or participates in. Include owned groups and leave filtering and merging with the native listing to the addon.</p>
+        <p>Each array item contains the following fields:</p>
+        <table>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>owner</code></td><td>An object containing the owning account’s <code>id</code> (account handle) and <code>name</code> (display name).</td></tr>
+                <tr><td><code>group</code></td><td>The native group JSON, including account membership.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <thead><tr><th>Status</th><th>Outcome</th></tr></thead>
+            <tbody>
+                <tr><td>200</td><td>Return the array of group records. No matching groups returns an empty array.</td></tr>
+                <tr><td>403</td><td>The requester is unauthenticated.</td></tr>
+                <tr><td>500</td><td>The listing cannot be read or parsed. Do not substitute an empty listing.</td></tr>
+            </tbody>
+        </table>
+        <h4>Account group listing — <code>GET /chats/&lt;accountID&gt;/groups</code></h4>
+        <p>Use the response structure and access rules of Shared-group listing, filtered to groups owned by the account identified by <code>accountID</code>. The cross-account listing remains available at <code>GET /chats</code>.</p>
+        <table>
+            <thead><tr><th>Status</th><th>Outcome</th></tr></thead>
+            <tbody>
+                <tr><td>200</td><td>Return the array of accessible group records for the source account. No accessible groups returns an empty array.</td></tr>
+                <tr><td>403</td><td>The requester is unauthenticated.</td></tr>
+                <tr><td>500</td><td>The listing cannot be read or parsed. Do not substitute an empty listing.</td></tr>
+            </tbody>
+        </table>
+        <h4>Shared group — <code>GET /chats/&lt;accountID&gt;/groups/&lt;groupID&gt;</code></h4>
+        <p>The account identifier is the owning account’s handle; the group identifier is its native group ID. Access requires an authenticated requester who owns the group or is listed as a participant.</p>
+        <table>
+            <thead><tr><th>Status</th><th>Outcome</th></tr></thead>
+            <tbody>
+                <tr><td>200</td><td>Return the same <code>owner</code> and <code>group</code> structure as an item from Shared-group listing. The native group record includes its chat IDs.</td></tr>
+                <tr><td>403</td><td>The requester is unauthenticated or does not meet this route’s access rule. Takes priority over 404.</td></tr>
+                <tr><td>404</td><td>After access is established, the source account or group file does not exist.</td></tr>
+                <tr><td>500</td><td>The group file exists but cannot be read or parsed. Do not substitute an empty group.</td></tr>
+            </tbody>
+        </table>
+        <h4>Group chat listing — <code>GET /chats/&lt;accountID&gt;/groups/&lt;groupID&gt;/chats</code></h4>
+        <p>Use the identifiers and access rules defined for Shared group. Return an array of native chat-summary records for the chat IDs in that group, in their stored order. Do not include other chats from the owner’s storage.</p>
+        <table>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>file_id</code></td><td>Native chat ID without the <code>.jsonl</code> extension.</td></tr>
+                <tr><td><code>file_name</code></td><td>Chat filename including <code>.jsonl</code>.</td></tr>
+                <tr><td><code>file_size</code></td><td>Native formatted file-size string.</td></tr>
+                <tr><td><code>chat_items</code></td><td>Message count excluding the metadata header.</td></tr>
+                <tr><td><code>mes</code></td><td>Last-message preview using native empty-chat and empty-message placeholders.</td></tr>
+                <tr><td><code>last_mes</code></td><td>Native last-message date value, falling back to the file modification time.</td></tr>
+                <tr><td><code>match</code></td><td>Native chat-summary match flag.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <thead><tr><th>Status</th><th>Outcome</th></tr></thead>
+            <tbody>
+                <tr><td>200</td><td>Return the array of chat summaries. A group with no chat IDs returns an empty array.</td></tr>
+                <tr><td>403</td><td>The requester is unauthenticated or does not meet this route’s access rule. Takes priority over 404.</td></tr>
+                <tr><td>404</td><td>After access is established, the source account, group file, or a referenced chat file does not exist.</td></tr>
+                <tr><td>500</td><td>A required file exists but cannot be read or parsed. Do not substitute an empty or partial listing.</td></tr>
+            </tbody>
+        </table>
+        <h4>Chat transcript — <code>GET /chats/&lt;accountID&gt;/groups/&lt;groupID&gt;/chats/&lt;chatID&gt;</code></h4>
+        <p>Use the account and group identifiers defined for Shared group. The chat identifier is its native chat ID without <code>.jsonl</code>, URL-encoded as one path segment. Access requires an authenticated requester who owns or participates in the group, and the requested chat ID must occur in that group’s chat list.</p>
+        <table>
+            <thead><tr><th>Status</th><th>Outcome</th></tr></thead>
+            <tbody>
+                <tr><td>200</td><td>Return the saved transcript as a JSON array in file order, preserving its metadata header and all message fields, including extension metadata. An existing empty file returns an empty array.</td></tr>
+                <tr><td>403</td><td>The requester is unauthenticated or does not meet this route’s access rule. Takes priority over 404.</td></tr>
+                <tr><td>404</td><td>After access is established, the source account, group file, or chat file does not exist.</td></tr>
+                <tr><td>500</td><td>A required file exists but cannot be read or parsed. Do not substitute an empty or partial transcript.</td></tr>
+            </tbody>
+        </table>
+        <h3>Event bus</h3>
+        <p>The event bus uses WebSocket to carry client messages through the server to recipient clients.</p>
+        <h4>Attaching to the SillyTavern server</h4>
+        <p>SillyTavern supplies the plugin with an HTTP router rather than the listening server. During the authenticated ticket request, the plugin obtains the underlying HTTP or HTTPS server from the request’s socket and attaches a WebSocket upgrade listener to that server. The bus shares SillyTavern’s existing listener and port, without a separate server or changes to SillyTavern core.</p>
+        <p>Attach at most once per underlying server instance, before returning a connection ticket. Handle only upgrades for this plugin’s <code>/events</code> path; leave other upgrade paths to their existing handlers. Upgrade requests bypass the normal HTTP middleware, so connection authentication uses the ticket contract below. Plugin shutdown removes its upgrade listeners and closes its WebSocket connections.</p>
+        <pre>On an authenticated ticket request:
+    Obtain the listening server from the request’s socket
+    If this plugin has not attached to that server:
+        Attach an upgrade listener scoped to this plugin’s event path
+    Issue the connection ticket
+
+On an upgrade for this plugin’s event path:
+    Validate the connection ticket
+    Accept the WebSocket and consume the ticket
+    Associate the connection with the ticket’s authenticated account</pre>
+        <h4>Connection authentication</h4>
+        <p>An authenticated, CSRF-protected <code>POST /events/connect</code> issues a short-lived, single-use ticket bound to the authenticated account. The browser library presents that ticket to open a WebSocket at <code>/events</code> on the existing SillyTavern server. These paths are relative to the plugin’s API mount.</p>
+        <p>The ticket request has no body. Tickets expire 30 seconds after issuance and are consumed on successful connection. The library presents the ticket in the WebSocket URL’s <code>ticket</code> query parameter. The plugin must not log ticket values.</p>
+        <table>
+            <thead><tr><th>Response field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>ticket</code></td><td>The single-use connection ticket.</td></tr>
+                <tr><td><code>expiresAt</code></td><td>Ticket expiry as an ISO 8601 UTC timestamp.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <thead><tr><th>Status</th><th>Outcome</th></tr></thead>
+            <tbody>
+                <tr><td>200</td><td>The ticket request succeeded; return the ticket response.</td></tr>
+                <tr><td>403</td><td>The ticket request is unauthenticated or fails CSRF validation.</td></tr>
+                <tr><td>500</td><td>The ticket could not be issued.</td></tr>
+            </tbody>
+        </table>
+        <p>The WebSocket upgrade returns 101 on success. A missing, expired, or previously consumed ticket rejects the upgrade with 403.</p>
+        <div class="mermaid">
+sequenceDiagram
+    participant Library as Browser library
+    participant HTTP as Plugin HTTP router
+    participant Bus as WebSocket bus
+    Library->>HTTP: POST /events/connect (session + CSRF)
+    HTTP-->>Library: Ticket and expiry
+    Library->>Bus: Upgrade /events with ticket
+    Bus-->>Library: 101 Switching Protocols
+    Note over Library,Bus: Connected, but not joined to a chat
+    Library->>Bus: Join (request ID, owning account, group, chat)
+    Bus->>Bus: Check membership and associate connection
+    Bus-->>Library: Matching result: isOwner, ownerPresent
+    Note over Library,Bus: Joined — application messages can now be routed
+        </div>
+        <h4>Connection health</h4>
+        <p>The server sends a native WebSocket ping every 15 seconds; the browser responds with a native pong without library or addon handlers. If its pong does not arrive within 15 seconds, terminate the connection. A closed or terminated connection is removed from its Chat, applying the owner-reselection and Chat-removal rules below.</p>
+        <h4>Reconnection</h4>
+        <p>The browser library automatically reconnects using a fresh ticket and connection identity. Retry after 1, 2, 4, 8, and then 15 seconds, keeping subsequent retries at 15 seconds. Stop retrying when ticket issuance returns 403. A successful connection resets the retry delay.</p>
+        <p>On reconnection, the browser library joins the currently open chat, not a remembered previously joined chat; it joins none if no chat is open. It does not resend messages.</p>
+        <h4>Browser library</h4>
+        <p>The browser library ships with the multiplayer addon and exposes connect, send, handler registration and unsubscription, join, and leave operations. It is the foundation used by multiplayer itself and other consuming addons, rather than each implementing the WebSocket protocol separately. This specification defines the library and server contracts together; application workflows belong to the consuming addons.</p>
+        <p>Send, join, and leave return promises resolved by the matching server acknowledgment or rejected on failure. Join resolves with <code>isOwner</code> and <code>ownerPresent</code>; send and leave resolve without a value. Handler registration is synchronous and returns its unsubscribe function.</p>
+        <h4>Library lifecycle events</h4>
+        <p>Addons subscribe to library lifecycle events through the same handler-registration API. These reserved events cannot be sent through the application send operation. Their sender is <code>null</code>. Connection lifecycle events without chat context also have a <code>null</code> chat argument; <code>bus.status</code> carries the chat identity from its status envelope.</p>
+        <table>
+            <thead><tr><th>Event</th><th>Meaning</th></tr></thead>
+            <tbody>
+                <tr><td><code>bus.connected</code></td><td>The WebSocket connection has opened. The body is <code>null</code>.</td></tr>
+                <tr><td><code>bus.disconnected</code></td><td>The WebSocket connection has closed or been lost. The body is <code>null</code>.</td></tr>
+                <tr><td><code>bus.status</code></td><td>The server supplied session status; the body contains <code>isOwner</code> and <code>ownerPresent</code>.</td></tr>
+            </tbody>
+        </table>
+        <h4>In-memory Chat</h4>
+        <p>The server maintains a Chat record distinct from the saved transcript:</p>
+        <table>
+            <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+            <tbody>
+                <tr><td>Identity</td><td>Owning account, group ID, and chat ID.</td></tr>
+                <tr><td>Connected clients</td><td>Connection identities and their authenticated accounts.</td></tr>
+                <tr><td>Session-owner connection</td><td>The connection targeted by <code>owner</code>, or none.</td></tr>
+                <tr><td>Connection ordering</td><td>The ordering needed to select a replacement session-owner connection.</td></tr>
+            </tbody>
+        </table>
+        <p>Create the record when the first client joins. Remove it when the last client leaves or disconnects, without changing stored groups or transcripts. Guest connections can keep the record alive without a session-owner connection.</p>
+        <p>The owning account is the account storing the group. The first connection from that account joining the chat becomes its session-owner connection. Additional connections from the owning account remain ordinary recipients. When the session-owner connection leaves or disconnects, select the longest-connected remaining connection from the owning account viewing that chat. Connections from guest accounts cannot become session owner.</p>
+        <p>The Chat record remains server-side. A successful join returns <code>isOwner</code> and <code>ownerPresent</code> booleans in its response <code>data</code>. The former identifies session ownership by this connection; the latter indicates that a session-owner connection exists. Subsequent changes use the status envelope defined in Wire format. Clients do not receive the Chat record.</p>
+        <p>Readiness messages are application events carried by the bus; the server’s routing status does not represent application readiness.</p>
+        <div class="mermaid">
+stateDiagram-v2
+    state "No Chat record" as Absent
+    state "Clients present — no session owner" as Ownerless
+    state "Clients present — session owner selected" as Owned
+    [*] --> Absent
+    Absent --> Ownerless: First client joins (guest account)
+    Absent --> Owned: First client joins (owning account)
+    Ownerless --> Owned: Owning-account connection joins
+    Ownerless --> Ownerless: Clients join or leave while guests remain
+    Owned --> Owned: Other clients join or leave
+    Owned --> Owned: Session owner leaves — select longest-connected eligible replacement
+    Owned --> Ownerless: Session owner leaves with only guest connections remaining
+    Owned --> Absent: Last client leaves
+    Ownerless --> Absent: Last client leaves
+    note right of Absent
+        Leaving includes disconnection.
+        Removing the record does not
+        change stored data.
+    end note
+        </div>
+        <h4>Connection context</h4>
+        <p>A client explicitly joins a chat by supplying its owning account, group ID, and chat ID. The server checks that the authenticated account owns or participates in the group and that the chat belongs to that group. Each connection belongs to at most one chat. Join and leave operations take effect in arrival order per connection. Validate a join before changing the association: a failed join leaves the previous association intact, and a successful join replaces it. Joining the same chat again succeeds without changing owner selection. Leaving clears the association and succeeds even when no chat is joined.</p>
+        <h4>Destinations</h4>
+        <p>The caller specifies one of two destinations, scoped to the shared chat:</p>
+        <table>
+            <thead><tr><th>Destination</th><th>Recipients</th></tr></thead>
+            <tbody>
+                <tr><td>To owner</td><td>The chat’s session-owner connection, including itself when it is the sender.</td></tr>
+                <tr><td>To all</td><td>All connections viewing the chat, including the sending connection.</td></tr>
+            </tbody>
+        </table>
+        <div class="mermaid">
+flowchart TD
+    Sender["Sending client"] --> Server["Server validates routing envelope"]
+    Server -.-> Ack["Acknowledge acceptance to sender<br/>Not confirmation of handler completion"]
+    Server --> Destination{"Destination"}
+    Destination -->|owner| Owner["Selected session-owner connection<br/>May be the sending connection"]
+    Destination -->|all| All["Every connection joined to this chat<br/>Including the sender"]
+    Owner --> Library["Each receiving browser library"]
+    All --> Library
+    Library --> Registered{"Handlers registered<br/>for this event name?"}
+    Registered -->|No| Ignore["Ignore event"]
+    Registered -->|Yes| Copies["Independent chat, sender, and body copies<br/>One per registered handler"]
+    Copies --> Handlers["Invoke in registration order<br/>Do not await asynchronous completion<br/>Isolate handler failures"]
+        </div>
+        <h4>Message types and handlers</h4>
+        <p>Any addon can send its own namespaced message types through the bus using the destinations above. Message types use an addon namespace followed by a period and an event name, such as <code>multiplayer.turn</code> or <code>rpg-companion.update</code>.</p>
+        <p>Receiving addons register client-side handlers for message types. The server routes messages without requiring a server-side handler or interpreting their meaning. A receiving client with no registered handler for a type ignores that message.</p>
+        <p>Multiplayer messages use the same registration and delivery mechanism as messages from any other addon.</p>
+        <h4>Registering a handler</h4>
+        <p>The client-facing registration operation accepts the event name and a handler, and returns an unsubscribe function that removes that registration. Multiple handlers may register for the same event name without replacing one another. Each handler receives three arguments: chat identity, sender, and body. Each handler receives its own independent deep copy of those values. Mutating that copy cannot affect another handler’s input.</p>
+        <h4>Sending a message</h4>
+        <p>The client-facing send operation accepts three positional arguments:</p>
+        <table>
+            <thead><tr><th>Argument</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td>Destination</td><td><code>owner</code> or <code>all</code>.</td></tr>
+                <tr><td>Event name</td><td>The namespaced message type.</td></tr>
+                <tr><td>Event body</td><td>The JSON payload delivered to handlers.</td></tr>
+            </tbody>
+        </table>
+        <p>The chat is derived from the connection’s currently loaded chat, and the sender from authentication; neither is supplied as a send argument.</p>
+        <h4>Delivery</h4>
+        <p>The bus delivers live messages to currently connected recipients. It maintains no offline backlog and does not automatically replay messages after reconnection. Submission-status messages use the ordinary event transport rather than transport replay.</p>
+        <p>A successful send confirms only that the server accepted the message for routing, not that recipients handled it. Features requiring a result send a response event. Sending fails immediately rather than waiting or queueing when the client is disconnected, has no chat loaded, or targets <code>owner</code> without a connected session owner.</p>
+        <p>Messages from each sender are delivered in send order. Listeners are invoked in registration order without waiting for asynchronous handlers to finish. Synchronous exceptions and asynchronous rejections are logged locally without preventing other handlers from receiving the event. Features requiring sequential completion manage their own queues.</p>
+        <p>If the connection drops before a request’s acknowledgment arrives, the library rejects the outstanding request with an explicit unknown-outcome error. It does not claim that the request was undelivered and does not automatically retry it.</p>
+        <h4>Wire format</h4>
+        <p>Messages use JSON envelopes. Client requests identify their operation as join, leave, or send and include a request ID. Each request receives a success or error response correlated by that ID. Request IDs provide correlation only, not replay or deduplication.</p>
+        <table>
+            <thead><tr><th>Message</th><th>Fields</th></tr></thead>
+            <tbody>
+                <tr><td>Join request</td><td><code>op: "join"</code>, <code>requestId</code>, <code>accountId</code>, <code>groupId</code>, <code>chatId</code>.</td></tr>
+                <tr><td>Leave request</td><td><code>op: "leave"</code>, <code>requestId</code>.</td></tr>
+                <tr><td>Send request</td><td><code>op: "send"</code>, <code>requestId</code>, <code>destination</code>, <code>eventName</code>, <code>body</code>.</td></tr>
+                <tr><td>Response</td><td><code>op: "result"</code>, <code>requestId</code>, <code>ok</code>, and <code>data</code> on success or <code>error</code> on failure. Successful send and leave responses use <code>data: null</code>.</td></tr>
+                <tr><td>Delivered event</td><td><code>op: "event"</code>, <code>chat</code>, <code>eventName</code>, <code>sender</code>, <code>body</code>.</td></tr>
+                <tr><td>Session status</td><td><code>op: "status"</code>, <code>chat</code>, <code>isOwner</code>, <code>ownerPresent</code>.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Chat identity — server-supplied on event and status envelopes, passed as the handler’s chat argument; not the in-memory Chat record</caption>
+            <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+            <tbody>
+                <tr><td><code>accountId</code></td><td>The group’s owning account. Has the same meaning in join requests, where it does not identify the requester.</td></tr>
+                <tr><td><code>groupId</code></td><td>The native group ID.</td></tr>
+                <tr><td><code>chatId</code></td><td>The native chat ID.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Sender — server-supplied identity of the sending connection</caption>
+            <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+            <tbody>
+                <tr><td><code>accountId</code></td><td>The sender’s authenticated account.</td></tr>
+                <tr><td><code>connectionId</code></td><td>The sending connection’s identity, distinguishing connections belonging to the same account.</td></tr>
+            </tbody>
+        </table>
+        <h4>Error responses</h4>
+        <p>An error response contains an <code>error</code> object with a machine-readable <code>code</code> and human-readable <code>message</code>. Authorization takes precedence over resource existence.</p>
+        <table>
+            <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+            <tbody>
+                <tr><td><code>invalid_request</code></td><td>Malformed envelope or unsupported operation.</td></tr>
+                <tr><td><code>forbidden</code></td><td>The authenticated account lacks access to the requested chat.</td></tr>
+                <tr><td><code>not_found</code></td><td>An authorized resource is missing.</td></tr>
+                <tr><td><code>not_joined</code></td><td>Sending without a joined chat.</td></tr>
+                <tr><td><code>owner_unavailable</code></td><td>Sending to <code>owner</code> when no session owner exists.</td></tr>
+                <tr><td><code>internal_error</code></td><td>The server could not complete the request.</td></tr>
+            </tbody>
+        </table>
+        <h4>Validation</h4>
+        <p>The bus treats each message body as opaque JSON and forwards it unchanged, without body schemas or central body validation. Each receiving handler decides what body contents it accepts.</p>
+        <p>The bus validates the routing envelope: a namespaced message type, one of the supported destinations, and a shared chat in which the sender participates. It supplies the authenticated sender identity rather than trusting an identity claimed in the body.</p>
+    </section>
+    <section id="edge-cases">
+        <h2>Edge Cases</h2>
+        <dl class="edge-case">
+            <dt>Authentication is restored after a 403 stopped reconnection</dt>
+            <dd>The library exposes an explicit connect operation that restarts connection attempts without requiring a page refresh. Calling it while already connected does nothing.</dd>
+        </dl>
+        <dl class="edge-case">
+            <dt>A message body cannot be serialized as JSON</dt>
+            <dd>The library rejects the send locally, transmits nothing, and leaves the connection open. This includes circular objects and unsupported values such as <code>BigInt</code>.</dd>
+        </dl>
+        <dl class="edge-case">
+            <dt>An event or status arrives for a previously open chat</dt>
+            <dd>The library compares the envelope’s chat identity with the currently open chat. Drop a mismatched event or status without invoking handlers or updating session status.</dd>
+        </dl>
+        <dl class="edge-case">
+            <dt>A join is superseded by a newer join or leave</dt>
+            <dd>The most recent join or leave intent wins. Reject the superseded join’s promise with a superseded error and drop its late acknowledgment without changing current status or emitting <code>bus.status</code>. The library’s final association follows the latest intent.</dd>
+        </dl>
+        <dl class="edge-case">
+            <dt>Malformed WebSocket message</dt>
+            <dd>Reject malformed JSON or an invalid envelope with <code>invalid_request</code>, keeping the connection open and Chat state unchanged. Return the request ID when usable; otherwise return <code>requestId: null</code>.</dd>
+        </dl>
+    </section>
+    <section id="testing-criteria">
+        <h2>Testing Criteria</h2>
+        <p>Tests run within this project using storage fixtures, fake authenticated requests, simulated connections and browser context, and controlled clocks. They require neither a live SillyTavern installation nor another service.</p>
+        <h3>HTTP resources</h3>
+        <ul class="criteria">
+            <li>Given enabled accounts with enabled, disabled, and absent discoverability preferences, the account listing includes only enabled accounts with enabled or absent preferences, including the requester when eligible, regardless of discreet login.</li>
+            <li>Given eligible account fixtures, account records contain only <code>id</code>, <code>name</code>, and <code>avatar</code>, with an image data URL for a configured avatar and <code>null</code> when unset.</li>
+            <li>Given an unauthenticated resource request, the route returns 403.</li>
+            <li>Given a requester without access to a named resource, the route returns 403 whether or not that resource exists.</li>
+            <li>Given authorized access and a missing resource, the resource route returns 404 rather than empty content.</li>
+            <li>Given a required resource that cannot be read or parsed, the route returns 500 rather than empty or partial content.</li>
+            <li>Given a route identifier attempting to escape the source resource directory, no file outside that directory is read or returned.</li>
+            <li>Given authorized resources with identical names or IDs in different accounts, each qualified route returns only its selected source account’s resource.</li>
+            <li>Given a group containing a character and the requesting participant, the character-card route returns the native card JSON and the character-image route returns the unchanged PNG, including embedded metadata, with <code>image/png</code> content type.</li>
+            <li>Given a character absent from every group shared with the requester, its card and image routes return 403.</li>
+            <li>Given accounts sharing a group and a known persona-image filename, the persona route returns the original image with its image content type even when it is not the source account’s active persona.</li>
+            <li>Given accounts sharing a group and a known lorebook filename, the lorebook route returns the complete saved JSON, including disabled entries, without consulting an advertised-book registry.</li>
+            <li>Given accounts with no shared group, cross-account persona-image and lorebook reads return 403.</li>
+            <li>Given authorized resource requests without any connected owner browser, their results are unchanged by the absence of that connection.</li>
+            <li>Given owned groups, participating groups, and unrelated groups, the cross-account group listing returns only owned and participating groups with <code>owner.id</code>/<code>owner.name</code> and native group JSON.</li>
+            <li>Given accessible groups from multiple source accounts, the account-specific group listing returns only those belonging to its requested source account.</li>
+            <li>Given no eligible accounts or no accessible groups, the corresponding collection route returns 200 with an empty array.</li>
+            <li>Given an accessible group, its detail route returns the same <code>owner</code>/<code>group</code> structure as its collection entry, including native chat IDs and account membership.</li>
+            <li>Given a group with stored chat IDs, its chat collection returns native summary records in that stored order and includes no unrelated owner-account chats.</li>
+            <li>Given a group with no chat IDs, its chat collection returns 200 with an empty array.</li>
+            <li>Given a group referencing a missing or unreadable chat file, the chat collection returns 404 or 500 respectively instead of a partial listing.</li>
+            <li>Given an authorized chat transcript, its route returns a JSON array in file order preserving the metadata header and every message and extension field.</li>
+            <li>Given an existing empty transcript file, the transcript route returns 200 with an empty array.</li>
+            <li>Given a requested chat ID absent from the selected group, the transcript route returns 403 even if that chat exists elsewhere.</li>
+            <li>Given a successful JSON resource response, its content type is <code>application/json</code>.</li>
+        </ul>
+        <h3>Connection establishment and recovery</h3>
+        <ul class="criteria">
+            <li>Given repeated authenticated ticket requests through one underlying server instance, the plugin attaches exactly one upgrade listener to that instance before issuing tickets.</li>
+            <li>Given a WebSocket upgrade for another path, the plugin’s listener leaves it untouched.</li>
+            <li>Given plugin shutdown, its upgrade listeners are removed and its WebSocket connections are closed.</li>
+            <li>Given an authenticated, CSRF-valid ticket request without a body, the route returns 200 with a single-use ticket bound to that account and an ISO 8601 UTC <code>expiresAt</code> value 30 seconds after issuance.</li>
+            <li>Given an unauthenticated or CSRF-invalid ticket request, the route returns 403 and issues no ticket.</li>
+            <li>Given a ticket-issuance failure, the route returns 500.</li>
+            <li>Given an unexpired ticket presented to the WebSocket endpoint, the upgrade returns 101 and consumes the ticket.</li>
+            <li>Given a missing, expired, or consumed ticket, the upgrade returns 403.</li>
+            <li>Given ticket issuance and connection attempts, plugin logs contain no ticket values.</li>
+            <li>Given an open connection and a controlled clock, the server sends native WebSocket pings at 15-second intervals without generating application heartbeat events.</li>
+            <li>Given a ping with no pong within 15 seconds, the connection is terminated and removed from its Chat.</li>
+            <li>Given a lost connection and repeated network failures, the library retries after 1, 2, 4, 8, and 15 seconds, then continues indefinitely at 15-second intervals.</li>
+            <li>Given a successful reconnection, the library uses a fresh ticket and connection identity and resets its retry delay.</li>
+            <li>Given ticket issuance returning 403 during reconnection, automatic retries stop.</li>
+            <li>Given stopped retries followed by an explicit connect operation after authentication is restored, connection attempts resume without a page refresh.</li>
+            <li>Given an already connected library, an explicit connect operation creates no additional connection.</li>
+            <li>Given a changed currently open chat during an outage, reconnection joins that current chat rather than the previously joined chat; with no open chat, it joins none.</li>
+            <li>Given messages sent before a disconnection, reconnection neither resends them nor replays missed events.</li>
+            <li>Given a connection dropping before acknowledgment, the outstanding request rejects with an unknown-outcome error rather than an undelivered result or an automatic retry.</li>
+        </ul>
+        <h3>Chat membership and session ownership</h3>
+        <ul class="criteria">
+            <li>Given the first valid join for a chat, the server creates its in-memory Chat record independently of stored transcript content.</li>
+            <li>Given a join from an account without group access or for a chat outside the group, the server rejects it without changing the connection’s previous association.</li>
+            <li>Given join and leave requests on one connection, their effects occur in arrival order.</li>
+            <li>Given a successful join to a different chat, the connection belongs only to the newly selected chat.</li>
+            <li>Given a repeated join to the same chat, the request succeeds without changing owner selection.</li>
+            <li>Given a leave request, the association is cleared; leaving an already unjoined connection also succeeds.</li>
+            <li>Given the first owning-account connection joining a chat, it becomes session owner while subsequent owning-account connections remain ordinary recipients.</li>
+            <li>Given only guest-account connections in a chat, no connection acquires session ownership and the Chat record remains present.</li>
+            <li>Given a departing session owner and remaining owning-account connections, the longest-connected eligible connection is selected as replacement.</li>
+            <li>Given the last connection leaving or disconnecting, the server removes the Chat record without changing stored groups or transcripts.</li>
+            <li>Given connections in distinct chats, joins, departures, and owner selection in one chat do not alter the other chat.</li>
+            <li>Given a successful join, its result reports <code>isOwner</code> for that connection and <code>ownerPresent</code> for the session, without exposing the server’s Chat record.</li>
+            <li>Given a change to a connection’s owner-status facts, the server sends a status envelope with the chat identity and updated booleans.</li>
+            <li>Given a join superseded by a newer join or leave, its promise rejects as superseded and its late acknowledgment produces neither a current-status update nor <code>bus.status</code>.</li>
+            <li>Given an event or status envelope for a previously open chat, the library drops it without invoking handlers or updating current session status.</li>
+        </ul>
+        <h3>Routing and protocol</h3>
+        <ul class="criteria">
+            <li>Given a valid send to <code>owner</code>, only the selected session-owner connection receives the event, including when that connection is also the sender.</li>
+            <li>Given a valid send to <code>all</code>, every connection joined to that chat receives the event, including the sender, and connections in other chats receive none.</li>
+            <li>Given a disconnected sender, an unjoined sender, or an <code>owner</code> destination without a session owner, sending fails rather than waiting or queueing.</li>
+            <li>Given an addon-defined namespaced event with a JSON body, the server routes it without requiring a registered server-side handler or body schema.</li>
+            <li>Given a body containing a claimed sender identity, the delivered envelope still identifies the authenticated account and actual sending connection while preserving the body unchanged.</li>
+            <li>Given a routed event or status, its <code>chat</code> object contains the owning <code>accountId</code>, <code>groupId</code>, and <code>chatId</code>.</li>
+            <li>Given multiple messages from one sender, each recipient receives them in that sender’s send order.</li>
+            <li>Given server acceptance of a send whose recipient handler has not completed, the success response confirms routing acceptance without waiting for handler completion.</li>
+            <li>Given join, leave, and send requests, responses carry the matching <code>requestId</code> and <code>result</code> operation, with <code>ok</code> and either <code>data</code> or <code>error</code> according to outcome; successful send and leave responses contain <code>data: null</code>.</li>
+            <li>Given a malformed envelope, forbidden chat, missing authorized resource, unjoined send, absent owner, or internal failure, the error response contains the corresponding specified code and a human-readable message.</li>
+            <li>Given an unauthorized request for a missing chat resource, the response is <code>forbidden</code> rather than <code>not_found</code>.</li>
+            <li>Given malformed JSON or an invalid envelope, the server returns <code>invalid_request</code> with a usable <code>requestId</code> or <code>null</code>, keeps the connection open, and leaves Chat state unchanged.</li>
+        </ul>
+        <h3>Browser library</h3>
+        <ul class="criteria">
+            <li>Given send, join, and leave operations, each returns a promise settled by its matching acknowledgment; join resolves with the owner-status booleans, while send and leave resolve without a value.</li>
+            <li>Given a failed request, its library promise rejects rather than resolving successfully.</li>
+            <li>Given handler registration, it synchronously returns an unsubscribe function that removes that registration without replacing or removing other registrations.</li>
+            <li>Given multiple handlers for one event name, all receive chat identity, sender, and body in that argument order, with independent deep copies per handler.</li>
+            <li>Given a handler mutating its inputs, subsequent handlers receive unaffected values.</li>
+            <li>Given multiple handlers including a pending asynchronous handler, invocation follows registration order without waiting for asynchronous completion.</li>
+            <li>Given a handler throwing or rejecting asynchronously, the failure is logged locally and other registered handlers still receive the event.</li>
+            <li>Given a received event with no registered handler, the library ignores it without failure.</li>
+            <li>Given multiplayer and another addon registering event handlers, both use the same registration and delivery mechanism.</li>
+            <li>Given a connection opening or closing, registered lifecycle listeners receive <code>bus.connected</code> or <code>bus.disconnected</code> respectively, with <code>null</code> chat, sender, and body arguments.</li>
+            <li>Given a server status notification for the current chat, <code>bus.status</code> listeners receive its chat identity, a <code>null</code> sender, and the owner-status booleans in the body.</li>
+            <li>Given an attempt to send a reserved lifecycle event through the application send operation, it is rejected rather than delivered as an application event.</li>
+            <li>Given a body that cannot be serialized as JSON, including a circular object or <code>BigInt</code>, the library rejects locally, transmits nothing, and leaves the connection open.</li>
+        </ul>
+    </section>
+</article>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+    // Render every diagram type at its natural width so the .mermaid
+    // container, not the text column, decides how wide it can grow.
+    const naturalWidth = Object.fromEntries(
+        ['flowchart', 'sequence', 'class', 'state', 'er', 'gantt', 'journey',
+         'pie', 'gitGraph', 'timeline', 'mindmap', 'requirement', 'c4']
+            .map(type => [type, { useMaxWidth: false }])
+    );
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: getComputedStyle(document.documentElement)
+            .getPropertyValue('--spec-mermaid-theme').trim() || 'default',
+        securityLevel: 'loose',
+        ...naturalWidth
+    });
+</script>
+</body>
+</html>
