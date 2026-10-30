@@ -14,7 +14,7 @@ function stableId(message) {
  * @param {object} options Browser objects, state getter and submission/action callbacks.
  * @returns {object} Mount, refresh and disposal operations.
  */
-export function createConversationUI({ document, window, getState, onSubmit, onGenerate, onEdit, onDelete, onRetry, onDiscard, shouldSendOnEnter = () => true, isPopupOpen = () => false, onError = error => console.error(error) }) {
+export function createConversationUI({ document, window, getState, renderMessage, onSubmit, onGenerate, onEdit, onDelete, onRetry, onDiscard, shouldSendOnEnter = () => true, isPopupOpen = () => false, onError = error => console.error(error) }) {
     let mounted = false;
     let observer;
     const originals = new Map();
@@ -119,6 +119,7 @@ export function createConversationUI({ document, window, getState, onSubmit, onG
         }
         const target = event.target;
         if (target.closest('[data-multiplayer-overlay]')) {
+            if (!target.closest('[data-multiplayer-action]')) { stop(event); }
             return;
         }
         if (target.closest(unsupportedMutationSelectors)) { stop(event); return; }
@@ -233,17 +234,28 @@ export function createConversationUI({ document, window, getState, onSubmit, onG
     }
 
     function overlayMessage(message) {
-        const element = document.createElement('div');
+        const prepared = { is_user: false, is_system: false, send_date: '', extra: {}, ...structuredClone(message), name: message?.name ?? '', mes: message?.mes ?? '' };
+        const element = renderMessage?.(prepared) ?? document.createElement('div');
         element.dataset.multiplayerOverlay = '';
-        element.className = 'multiplayer-provisional-message';
-        if (message?.force_avatar) {
+        element.classList.add('mes', 'multiplayer-provisional-message');
+        if (!element.querySelector('.mes_text')) {
+            const avatarWrapper = textElement('mesAvatarWrapper', '');
+            const avatar = textElement('avatar', '');
             const image = document.createElement('img');
-            image.className = 'avatar';
-            image.alt = message.name ?? '';
-            image.src = message.force_avatar;
-            element.append(image);
+            image.alt = prepared.name;
+            image.src = prepared.force_avatar ?? '';
+            avatar.append(image);
+            avatarWrapper.append(avatar);
+            const block = textElement('mes_block', '');
+            const name = textElement('ch_name', '');
+            name.append(textElement('name_text', prepared.name));
+            block.append(name, textElement('mes_text', prepared.mes));
+            element.append(avatarWrapper, block);
         }
-        element.append(textElement('ch_name', message?.name), textElement('mes_text', message?.mes));
+        for (const control of element.querySelectorAll('button, .mes_button, .swipe_left, .swipe_right')) {
+            control.disabled = true;
+            control.setAttribute('aria-disabled', 'true');
+        }
         return element;
     }
 
@@ -260,21 +272,23 @@ export function createConversationUI({ document, window, getState, onSubmit, onG
             element.dataset.multiplayerPending = pending.id;
             element.style.borderStyle = 'dashed';
             element.style.borderWidth = '1px';
-            element.append(textElement('multiplayer-save-status', pending.status === 'failed' ? 'Not saved' : 'Saving…'));
+            const content = element.querySelector('.mes_block') ?? element;
+            content.append(textElement('multiplayer-save-status', pending.status === 'failed' ? 'Not saved' : 'Saving…'));
             if (pending.status === 'failed') {
-                element.append(textElement('multiplayer-save-reason', pending.reason));
+                content.append(textElement('multiplayer-save-reason', pending.reason));
                 for (const [label, callback] of [['Retry', onRetry], ['Discard', onDiscard]]) {
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.textContent = label;
+                    button.dataset.multiplayerAction = label.toLowerCase();
                     button.addEventListener('click', () => invoke(callback, pending.id));
-                    element.append(button);
+                    content.append(button);
                 }
             } else {
                 const control = document.createElement('button');
                 control.disabled = true;
                 control.textContent = 'Saving…';
-                element.append(control);
+                content.append(control);
             }
             chat.append(element);
         }
@@ -284,7 +298,7 @@ export function createConversationUI({ document, window, getState, onSubmit, onG
                 continue;
             }
             seen.add(preview.messageId);
-            const element = overlayMessage({ name: preview.name, mes: preview.text, force_avatar: preview.force_avatar });
+            const element = overlayMessage({ name: preview.name, mes: preview.text, force_avatar: preview.force_avatar, extra: { multiplayer: { messageId: preview.messageId } } });
             element.dataset.multiplayerPreview = preview.messageId;
             chat.append(element);
         }
@@ -295,6 +309,10 @@ export function createConversationUI({ document, window, getState, onSubmit, onG
         }
     }
 
+    function liveElements(selector) {
+        return [...document.querySelectorAll(selector)].filter(element => !element.closest('.template_element'));
+    }
+
     function refresh() {
         observer?.disconnect();
         restore();
@@ -302,10 +320,10 @@ export function createConversationUI({ document, window, getState, onSubmit, onG
         if (!snapshot.shared) {
             document.querySelectorAll('[data-multiplayer-overlay]').forEach(element => element.remove());
         } else {
-            for (const element of document.querySelectorAll(unsupportedMutationSelectors)) {
+            for (const element of liveElements(unsupportedMutationSelectors)) {
                 setProperty(element, 'hidden', true);
             }
-            for (const element of document.querySelectorAll(generationSelectors)) {
+            for (const element of liveElements(generationSelectors)) {
                 if (!snapshot.isOwner) {
                     setProperty(element, 'hidden', true);
                 }
@@ -317,12 +335,12 @@ export function createConversationUI({ document, window, getState, onSubmit, onG
             if (sendButton && !available(snapshot)) {
                 setProperty(sendButton, 'disabled', true);
             }
-            for (const element of document.querySelectorAll(bulkSelectors)) {
+            for (const element of liveElements(bulkSelectors)) {
                 if (!snapshot.isOwner) {
                     setProperty(element, 'hidden', true);
                 }
             }
-            for (const element of document.querySelectorAll('.mes[mesid]')) {
+            for (const element of document.querySelectorAll('#chat .mes[mesid]:not([data-multiplayer-overlay])')) {
                 const message = messageAt(element, snapshot);
                 const allowed = permissions(snapshot, message);
                 const pending = snapshot.pending?.some(entry => (entry.body.messageId ?? stableId(entry.body.message)) === stableId(message));

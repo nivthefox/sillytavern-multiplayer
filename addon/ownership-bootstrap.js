@@ -30,6 +30,7 @@ async function startOwnership({ window, document, loadModule, createService, cre
         get chat() { return script.chat; },
         get selectedGroup() { return groups.selected_group; },
         get openGroupId() { return groups.openGroupId; },
+        entitiesFilter: script.entitiesFilter,
         eventSource: script.eventSource,
         event_types: script.event_types,
         openGroupById: groups.openGroupById,

@@ -31,6 +31,9 @@ export function createOwnershipNative({ service, native, document, window }) {
     const entries = new Map();
     const projectedIds = new Map();
     const loadedCards = new Map();
+    const projectedCharacters = new Set();
+    const characterFilterKey = 'multiplayer-shared-characters';
+    let previousCharacterFilter;
     const selectedAccounts = new Set();
     const subscriptions = [];
     const summaryIds = new Map();
@@ -103,6 +106,7 @@ export function createOwnershipNative({ service, native, document, window }) {
             const filename = card.multiplayer?.filename ?? card.avatar;
             loadedCards.set(sourceKey(ownerId, filename), card);
             const avatar = characterId(ownerId, filename);
+            projectedCharacters.add(avatar);
             const projection = { ...card, avatar, shallow: false, imageUrl: service.characterImage(ownerId, filename) };
             const index = native.characters.findIndex(character => character.avatar === avatar);
             if (index === -1) {
@@ -121,8 +125,12 @@ export function createOwnershipNative({ service, native, document, window }) {
         for (const entry of merged) {
             projections.push(projectGroup(entry, nativeIds));
             if (entry.owner.id !== service.account.id) {
-                const cached = entry.group.members.map(filename => loadedCards.get(sourceKey(entry.owner.id, filename))).filter(Boolean);
-                installCards(entry.owner.id, cached);
+                const missing = entry.group.members.filter(filename => !loadedCards.has(sourceKey(entry.owner.id, filename)));
+                if (missing.length) {
+                    installCards(entry.owner.id, await serviceOperation(() => service.loadCharacters(entry.owner.id, missing)));
+                }
+                const cards = entry.group.members.map(filename => loadedCards.get(sourceKey(entry.owner.id, filename))).filter(Boolean);
+                installCards(entry.owner.id, cards);
             }
         }
         return projections;
@@ -313,26 +321,22 @@ export function createOwnershipNative({ service, native, document, window }) {
             return;
         }
         const label = `Owned by ${entry.owner.name}`;
-        let ownerLabel = card.querySelector('.multiplayer-owner-label');
-        if (!ownerLabel) {
-            ownerLabel = element('span', label, 'multiplayer-owner-label');
-            card.append(ownerLabel);
-        }
-        if (ownerLabel.textContent !== label) {
-            ownerLabel.textContent = label;
-        }
+        card.querySelector('.multiplayer-owner-label')?.remove();
         let avatar = card.querySelector('.avatar');
         if (!avatar) {
-            avatar = element('div', undefined, 'avatar');
+            const count = Math.max(1, Math.min(4, entry.group.members.length));
+            avatar = document.querySelector(`#group_avatars_template .collage_${count}`)?.cloneNode(true) ?? element('div', undefined, 'avatar');
             const previous = card.querySelector('.missing-avatar');
-            previous?.remove();
-            card.append(avatar);
+            if (previous) {
+                previous.replaceWith(avatar);
+            } else {
+                card.prepend(avatar);
+            }
         }
         avatar.style.position = 'relative';
         if (!avatar.querySelector('.multiplayer-owner-badge')) {
             const badge = element('span', '♟', 'multiplayer-owner-badge');
             badge.title = label;
-            Object.assign(badge.style, { position: 'absolute', right: '0', bottom: '0', borderRadius: '50%', background: 'var(--SmartThemeBlurTintColor, #222)', padding: '0 3px', zIndex: '1' });
             avatar.append(badge);
         }
         decorateCollage(avatar, entry);
@@ -550,11 +554,19 @@ export function createOwnershipNative({ service, native, document, window }) {
         subscriptions.push([name, prepareNativePublication]);
     }
 
+    function filterSharedCharacters(entities) {
+        return entities.filter(entity => entity.type !== 'character' || !projectedCharacters.has(entity.item.avatar));
+    }
+
     async function mount() {
         if (mounted) {
             return;
         }
         mounted = true;
+        if (native.entitiesFilter) {
+            previousCharacterFilter = native.entitiesFilter.filterFunctions[characterFilterKey];
+            native.entitiesFilter.filterFunctions[characterFilterKey] = filterSharedCharacters;
+        }
         window.fetch = interceptedFetch;
         document.addEventListener('click', onClick, true);
         document.addEventListener('error', portraitError, true);
@@ -591,6 +603,13 @@ export function createOwnershipNative({ service, native, document, window }) {
     }
 
     function dispose() {
+        if (native.entitiesFilter?.filterFunctions[characterFilterKey] === filterSharedCharacters) {
+            if (previousCharacterFilter) {
+                native.entitiesFilter.filterFunctions[characterFilterKey] = previousCharacterFilter;
+            } else {
+                delete native.entitiesFilter.filterFunctions[characterFilterKey];
+            }
+        }
         if (window.fetch === interceptedFetch) {
             window.fetch = originalFetch;
         }

@@ -11,12 +11,12 @@ function message(accountId, filename, name = 'Player') {
     return { is_user: true, is_system: false, name, force_avatar: `/api/plugins/multiplayer/accounts/${encodeURIComponent(accountId)}/personas/${encodeURIComponent(filename)}`, extra: { multiplayer: { accountId } } };
 }
 
-function fixture(fetch = async () => Response.json({ description: 'A brave explorer.' })) {
+function fixture(fetch = async () => Response.json({ description: 'A brave explorer.' }), formatDescription) {
     assert.equal(typeof createPersonaContext, 'function');
     const requests = [];
     const prompts = [];
     const context = createPersonaContext({
-        accountId: 'owner', baseURL: 'https://tavern.example/', getRequestHeaders: () => ({ 'X-CSRF-Token': 'token' }),
+        accountId: 'owner', formatDescription, baseURL: 'https://tavern.example/', getRequestHeaders: () => ({ 'X-CSRF-Token': 'token' }),
         fetch: async (...args) => { requests.push(args); return fetch(...args); },
         setPrompt: text => prompts.push(text),
     });
@@ -40,6 +40,13 @@ test('latest human message per other account selects the description and persona
     assert.doesNotMatch(h.prompts.at(-1), /Old PC/);
     assert.equal(h.requests[0][1].cache, 'no-store');
     assert.equal(h.requests[0][1].headers['X-CSRF-Token'], 'token');
+});
+
+test('native description formatting receives the guest persona rather than the owners name', async () => {
+    const h = fixture(async () => Response.json({ description: '{{user}} is an explorer.' }), (description, persona) => description.replace('{{user}}', persona.name));
+    await h.context.prepare([message('guest', 'pc.png', 'Guest PC')]);
+    assert.match(h.prompts.at(-1), /Guest PC is an explorer\./);
+    assert.doesNotMatch(h.prompts.at(-1), /\{\{user\}\}/);
 });
 
 test('each generation fetches current descriptions instead of reusing previous contents', async () => {

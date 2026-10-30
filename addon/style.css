@@ -1,3 +1,21 @@
-body.charListGrid #rm_print_characters_block .multiplayer-owner-label {
-    display: none;
+.multiplayer-owner-badge {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    border-radius: 50%;
+    background: var(--SmartThemeBlurTintColor, #222);
+    padding: 0 3px;
+    z-index: 1;
+}
+
+[data-multiplayer-pending] .mes_buttons {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+[data-multiplayer-preview] .mes_buttons,
+[data-multiplayer-preview] .mes_edit_buttons,
+[data-multiplayer-preview] .swipe_left,
+[data-multiplayer-preview] .swipe_right {
+    display: none !important;
 }

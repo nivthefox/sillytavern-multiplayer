@@ -1,6 +1,7 @@
 import { BrowserEventBus } from './event-bus.js';
 import { createConversationActions, ensureMessageIdentity, messageId } from './conversation-actions.js';
 import { createConversationNative } from './conversation-native.js';
+import { createPersonaContext } from './conversation-personas.js';
 import { createConversationSession } from './conversation-session.js';
 import { createConversationUI } from './conversation-ui.js';
 
@@ -41,12 +42,19 @@ export async function mountConversations({ native, window, document, accountId, 
     let opening = 0;
     let streamingActive = false;
     let lastPreview;
+    let personaLoadFailed = false;
     const subscriptions = [];
     const report = error => window.toastr?.error(error.message, 'Multiplayer');
     const bus = suppliedBus ?? new BrowserEventBus({
         fetch: window.fetch.bind(window), WebSocket: window.WebSocket,
         getRequestHeaders: native.getRequestHeaders,
         getCurrentChat: () => current, location: window.location,
+    });
+    const personaContext = createPersonaContext({
+        accountId, baseURL: document.baseURI,
+        fetch: (...args) => window.fetch(...args), getRequestHeaders: native.getRequestHeaders,
+        formatDescription: (description, persona) => native.substituteParams(description, { name1Override: persona.name }),
+        setPrompt: text => native.setExtensionPrompt?.('multiplayer-personas', text, native.extension_prompt_types?.IN_PROMPT ?? 0, 0, false, native.extension_prompt_roles?.SYSTEM ?? 0),
     });
     const selectedIdentity = () => getConversationIdentity(native.groups.find(group => String(group.id) === String(native.selectedGroup)));
     const adapter = createConversationNative({
@@ -72,6 +80,7 @@ export async function mountConversations({ native, window, document, accountId, 
     }
 
     function stopAuthority() {
+        personaContext.clear();
         streamingActive = false;
         lastPreview = undefined;
         actions?.setAuthority(false);
@@ -104,6 +113,7 @@ export async function mountConversations({ native, window, document, accountId, 
         const identity = getConversationIdentity(group);
         if (sameChat(identity, current)) { return; }
         const request = ++opening;
+        personaContext.clear();
         adapter.invalidate();
         const previous = session;
         current = identity;
@@ -189,6 +199,11 @@ export async function mountConversations({ native, window, document, accountId, 
 
     ui = createConversationUI({
         document, window, getState: state,
+        renderMessage: message => {
+            const index = native.chat.findIndex(saved => messageId(saved) === messageId(message));
+            const rendered = native.updateMessageElement?.(message, { messageId: index < 0 ? native.chat.length : index });
+            return rendered?.[0] ?? rendered;
+        },
         onSubmit: text => submit(text).catch(report),
         onGenerate: options => generate(options).catch(report),
         onEdit: (id, text) => edit(id, text).catch(report),
@@ -213,14 +228,21 @@ export async function mountConversations({ native, window, document, accountId, 
 
     subscribe(native.event_types.CHAT_CHANGED, () => changed().catch(report));
     subscribe(native.event_types.GENERATION_STARTED, async (type, _options, dryRun) => {
+        personaContext.clear();
+        personaLoadFailed = false;
         streamingActive = false;
         lastPreview = undefined;
         if (!current || dryRun || type === 'quiet' || type === 'impersonate' || !session?.getState().isOwner) { return; }
+        const selected = session;
         const ready = actions.prepareGeneration();
-        await session.generationStatus(true);
+        await selected.generationStatus(true);
         try {
             await ready;
+            if (selected !== session || !selected.getState().isOwner || !sameChat(selectedIdentity(), selected.getState().chat)) { return; }
+            const prepared = await personaContext.prepare(selected.getState().messages);
+            if (!prepared) { personaLoadFailed = true; }
         } catch (error) {
+            personaLoadFailed = true;
             native.stopGeneration();
             if (session.getState().isOwner) { await session.generationStatus(false); }
             report(error);
@@ -229,11 +251,13 @@ export async function mountConversations({ native, window, document, accountId, 
     });
     subscribe(native.event_types.GENERATION_AFTER_COMMANDS, (type, _options, dryRun) => {
         if (!current || dryRun || type === 'quiet' || type === 'impersonate') { return; }
-        if (!session?.getState().isOwner || !session.getState().connected || actions.recoveryBlocked) {
+        if (!session?.getState().isOwner || !session.getState().connected || actions.recoveryBlocked || personaLoadFailed) {
             native.stopGeneration();
         }
     });
+    subscribe(native.event_types.GENERATION_ENDED, () => personaContext.clear());
     subscribe(native.event_types.GENERATION_STOPPED, async () => {
+        personaContext.clear();
         if (current && session?.getState().isOwner && session.getState().generating) {
             await session.generationStatus(false);
         }
@@ -247,14 +271,14 @@ export async function mountConversations({ native, window, document, accountId, 
         identify(native.streamingProcessor?.messageId);
     });
     const previewObserver = new window.MutationObserver(records => {
-        if (!streamingActive || !current || !session?.getState().isOwner || !session.getState().generating) { return; }
+        if (!streamingActive || !current || !sameChat(selectedIdentity(), current) || !session?.getState().isOwner || !session.getState().generating) { return; }
         const updated = records.some(record => (record.target.nodeType === 1 ? record.target : record.target.parentElement)?.closest('.mes .mes_text'));
         if (!updated) { return; }
         const index = native.streamingProcessor?.messageId ?? native.chat.length - 1;
         const message = native.chat[index];
         if (!message || message.is_user) { return; }
         identify(index);
-        const preview = { messageId: messageId(message), name: message.name, force_avatar: message.force_avatar ?? native.characterPortrait?.(message) ?? '', text: message.mes };
+        const preview = { messageId: messageId(message), name: message.name, force_avatar: native.characterPortrait?.(message) ?? message.force_avatar ?? '', text: message.mes };
         const key = JSON.stringify(preview);
         if (key === lastPreview) { return; }
         lastPreview = key;
@@ -267,6 +291,7 @@ export async function mountConversations({ native, window, document, accountId, 
         await session.generationStatus(true);
     });
     subscribe(native.event_types.GROUP_WRAPPER_FINISHED, async ({ type }) => {
+        personaContext.clear();
         if (!current || !session?.getState().isOwner || type === 'impersonate' || type === 'quiet') { return; }
         actions.setGenerating(false);
         await session.generationStatus(false);
@@ -281,6 +306,7 @@ export async function mountConversations({ native, window, document, accountId, 
         /** @returns {Promise<void>} Leaves shared play and restores native browser integrations. */
         async dispose() {
             opening++;
+            personaContext.clear();
             adapter.invalidate();
             current = null;
             await session?.close();
@@ -326,14 +352,18 @@ async function start({ window, document, loadModule }) {
         getTokenCountAsync: tokens.getTokenCountAsync,
         populateFileAttachment: chats.populateFileAttachment,
         isPopupOpen: () => popup.Popup?.util?.isPopupOpen?.() ?? Boolean(document.querySelector('dialog[open]')),
-        characterPortrait: message => message.original_avatar && currentPortrait(groups, message),
+        characterPortrait: message => {
+            const filename = message.original_avatar ?? script.characters[script.this_chid]?.avatar;
+            return filename && currentPortrait(groups, filename);
+        },
     };
     return mountConversations({ native, window, document, accountId: users.currentUser.handle });
 }
 
-function currentPortrait(groups, message) {
-    const group = groups.groups.find(group => group.id === groups.selected_group);
-    return `/api/plugins/multiplayer/accounts/${encodeURIComponent(group.multiplayer.owner)}/characters/${encodeURIComponent(message.original_avatar)}`;
+function currentPortrait(groups, filename) {
+    const group = groups.groups.find(group => String(group.id) === String(groups.selected_group));
+    if (!group?.multiplayer?.owner || filename === 'none') { return undefined; }
+    return `/api/plugins/multiplayer/accounts/${encodeURIComponent(group.multiplayer.owner)}/characters/${encodeURIComponent(filename)}`;
 }
 
 /**

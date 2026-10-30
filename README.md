@@ -56,7 +56,7 @@ Complete this once on the machine running SillyTavern, using the same operating-
 
 Create a group through SillyTavern’s **Create New Chat Group** screen. Select at least one character and optionally select guests under **Add Other Accounts**. Your account is the owner. Creation completes after the group and its ownership are both saved; if the ownership save fails, submit again to retry that save without creating another group.
 
-Shared groups appear in participants’ normal character listing with an **Owned by …** label and portrait badge. Guests can open the group and select saved chats through the normal chat interface, even when the owner is offline. Character cards and portraits come from the owner’s account.
+Shared groups appear in participants’ normal character listing with a portrait badge. Hover over the badge to see who owns the group. Guests can open the group and select saved chats through the normal chat interface, even when the owner is offline. Character cards and portraits come from the owner’s account.
 
 In extension settings, **Allow others to add me to shared groups** is enabled by default. Turning it off hides you from future account-choice listings; it does not remove existing memberships or choices already displayed to another user.
 
@@ -68,6 +68,8 @@ Open the same shared chat in each participant’s browser. The first connected o
 - **Request an AI turn** from the selected owner browser using empty-composer Send or a group member’s trigger control. Guests cannot generate or revise shared AI messages; private draft assistance remains available.
 - **Edit or delete** your own player messages. The selected owner can also edit AI messages and delete any message, including native bulk deletion. Player edits retain earlier versions as swipes.
 - **Saving…** means the change is still awaiting confirmation from the saved transcript—not merely acceptance by the event bus. Explicit failures show **Not saved**, with **Retry** and **Discard**. Neither operation replaces your current composer draft.
+
+For AI turns, other players’ persona descriptions come from the persona used in each player’s latest saved message. Your own persona description continues to use SillyTavern’s normal settings.
 
 During generation or owner disconnection, the saved conversation remains readable and drafting remains available, but shared changes pause. Reconnection reloads the saved transcript and reconciles pending changes without automatically resending them. Unsaved AI previews are removed on owner handoff, with an interruption notice when appropriate.
 
