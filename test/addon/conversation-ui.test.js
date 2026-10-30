@@ -210,8 +210,22 @@ test('AI preview updates replace one provisional display and saved identity supp
     assert.equal(document.querySelectorAll('[data-multiplayer-preview="ai-one"]').length, 1);
     assert.match(document.querySelector('[data-multiplayer-preview]').textContent, /first second/);
     state.messages = [{ mes: 'saved', extra: { multiplayer: { messageId: 'ai-one' } } }];
+    state.previews = [];
     ui.refresh();
     assert.equal(document.querySelector('[data-multiplayer-preview]'), null);
+});
+
+test('a streamed replacement swipe temporarily replaces its existing saved message', t => {
+    const { ui, state, document } = fixture(t);
+    state.messages = [{ mes: 'old response', is_user: false, extra: { multiplayer: { messageId: 'ai-one' } } }];
+    const row = addMessage(document, 0);
+    state.previews = [{ messageId: 'ai-one', name: 'GM', text: 'new response', force_avatar: '/npc.png' }];
+    ui.refresh();
+    assert.equal(hidden(row), true);
+    assert.match(document.querySelector('[data-multiplayer-preview]')?.textContent ?? '', /new response/);
+    state.previews = [];
+    ui.refresh();
+    assert.equal(hidden(row), false);
 });
 
 test('dispose restores ordinary native submission handling', t => {
