@@ -11,5 +11,11 @@
         "test": "node --test",
         "test:plugin": "node --test 'test/plugin/**/*.test.js'",
         "test:addon": "node --test 'test/addon/**/*.test.js'"
+    },
+    "dependencies": {
+        "mime-types": "^3.0.2"
+    },
+    "devDependencies": {
+        "express": "^4.22.3"
     }
 }
