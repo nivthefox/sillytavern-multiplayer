@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { deflateSync } from 'node:zlib';
+
+import extract from 'png-chunks-extract';
+import encodeChunks from 'png-chunks-encode';
+import { decode, encode } from 'png-chunk-text';
+
 import { init } from '../../plugin/index.js';
 
 export const routes = {
@@ -24,22 +30,19 @@ export function urlFor(route, values = {}) {
     return routes[route].replace(/:([^/]+)/g, (_, key) => encodeURIComponent(params[key]));
 }
 
-function metadataPng(card) {
-    const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
-    const text = Buffer.from(`chara\0${Buffer.from(JSON.stringify(card)).toString('base64')}`);
-    const chunk = Buffer.alloc(text.length + 12);
-    chunk.writeUInt32BE(text.length);
-    chunk.write('tEXt', 4);
-    text.copy(chunk, 8);
-    let crc = 0xffffffff;
-    for (const byte of chunk.subarray(4, -4)) {
-        crc ^= byte;
-        for (let bit = 0; bit < 8; bit++) {
-            crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
-        }
-    }
-    chunk.writeUInt32BE((crc ^ 0xffffffff) >>> 0, chunk.length - 4);
-    return Buffer.concat([image.subarray(0, -12), chunk, image.subarray(-12)]);
+/** Create a valid one-pixel RGBA PNG with native character metadata. */
+export function createCardPng(card) {
+    const header = Buffer.alloc(13);
+    header.writeUInt32BE(1, 0);
+    header.writeUInt32BE(1, 4);
+    header[8] = 8;
+    header[9] = 6;
+    return Buffer.from(encodeChunks([
+        { name: 'IHDR', data: header },
+        encode('chara', Buffer.from(JSON.stringify(card)).toString('base64')),
+        { name: 'IDAT', data: deflateSync(Buffer.from([0, 0, 0, 0, 0])) },
+        { name: 'IEND', data: Buffer.alloc(0) },
+    ]));
 }
 
 /** Create isolated native-account storage and injectable host operations for one test. */
@@ -62,7 +65,6 @@ export async function createFixture(t) {
         } }));
     }
     const calls = [];
-    const cards = new Map();
     const host = {
         async listAccounts() { calls.push(['listAccounts']); return profiles; },
         getDirectories(handle) { calls.push(['getDirectories', handle]); return directories[handle]; },
@@ -70,9 +72,11 @@ export async function createFixture(t) {
         readCard(buffer) {
             calls.push(['readCard', buffer]);
             assert.ok(Buffer.isBuffer(buffer), 'readCard must receive the original file buffer');
-            const card = cards.get(buffer.toString('base64'));
-            if (card === undefined) { throw new Error('Invalid embedded card'); }
-            return card;
+            const text = extract(buffer).filter(chunk => chunk.name === 'tEXt').map(chunk => decode(chunk.data));
+            const card = text.find(chunk => chunk.keyword.toLowerCase() === 'ccv3') ??
+                text.find(chunk => chunk.keyword.toLowerCase() === 'chara');
+            if (!card) { throw new Error('Invalid embedded card'); }
+            return Buffer.from(card.text, 'base64').toString('utf8');
         },
         formatBytes(size) { calls.push(['formatBytes', size]); return `${size} native bytes`; },
     };
@@ -93,9 +97,8 @@ export async function createFixture(t) {
     ];
     const lore = { entries: { 0: { uid: 0, content: 'GM secret', disable: true }, 1: { uid: 1, content: 'Public', disable: false } }, extension: { preserved: true } };
     const card = { spec: 'chara_card_v2', spec_version: '2.0', data: { name: 'GM', extensions: { world: 'World', custom: [1, 2] } }, unknown: 'preserve' };
-    const png = metadataPng(card);
-    cards.set(png.toString('base64'), JSON.stringify(card));
-    const persona = Buffer.from('89504e470d0a1a0a686973746f726963616c', 'hex');
+    const png = createCardPng(card);
+    const persona = createCardPng({ name: 'Historical persona' });
     await put('owner', 'groups', 'scene.json', group);
     await put('owner', 'groups', 'native.json', nativeGroup);
     await put('stranger', 'groups', 'scene.json', { ...group, name: 'Unrelated', multiplayer: { owner: 'stranger', accounts: [] } });
@@ -107,7 +110,7 @@ export async function createFixture(t) {
         await put(account, 'avatars', 'history.png', persona);
         await put(account, 'worlds', 'World ü.json', lore);
     }
-    return { root, profiles, directories, host, calls, cards, put, group, nativeGroup, transcript, lore, card, png, persona };
+    return { root, profiles, directories, host, calls, put, group, nativeGroup, transcript, lore, card, png, persona };
 }
 
 function response() {

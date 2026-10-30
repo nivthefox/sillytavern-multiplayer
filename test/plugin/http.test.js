@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, rm, stat, symlink, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createFixture, createHarness, routes } from './fixtures.js';
+import { createCardPng, createFixture, createHarness, routes } from './fixtures.js';
 
 const resourceRoutes = ['card', 'character', 'persona', 'lore', 'group', 'summaries', 'transcript'];
 const valuesFor = route => route === 'lore' ? { filename: 'World ü.json' } : {};
@@ -46,6 +46,13 @@ test('accounts: native handles, exact public shape, avatars, opt-out and enabled
         { id: 'peer', name: 'peer display', avatar: null },
         { id: 'stranger', name: 'stranger display', avatar: null },
     ]);
+});
+
+test('accounts: missing settings retain the default-enabled discoverability preference', async t => {
+    const f = await setup(t);
+    await rm(join(f.directories.guest.root, 'settings.json'));
+    const records = jsonResponse((await f.request('accounts')).res);
+    assert.ok(records.some(account => account.id === 'guest'));
 });
 
 test('accounts: no eligible accounts returns an empty array', async t => {
@@ -107,6 +114,27 @@ for (const source of ['owner', 'peer']) {
         jsonResponse((await f.request('lore', { values: { accountID: source, filename: 'World ü.json' } })).res, f.lore);
     });
 }
+
+for (const route of ['persona', 'lore']) {
+    test(`${route}: shared membership authorizes 404 for a deleted source account without reading its old files`, async t => {
+        const f = await setup(t);
+        f.profiles.splice(f.profiles.findIndex(account => account.handle === 'peer'), 1);
+        const { res } = await f.request(route, { values: { ...valuesFor(route), accountID: 'peer' } });
+        assert.equal(res.statusCode, 404);
+        assert.equal(f.calls.some(([name, account]) => name === 'getDirectories' && account === 'peer'), false);
+    });
+}
+
+test('membership removal affects subsequent requests without restarting the router', async t => {
+    const f = await setup(t);
+    for (const route of resourceRoutes) {
+        assert.equal((await f.request(route, { values: valuesFor(route) })).res.statusCode, 200);
+    }
+    await f.put('owner', 'groups', 'scene.json', { ...f.group, multiplayer: { owner: 'owner', accounts: ['peer'] } });
+    for (const route of resourceRoutes) {
+        assert.equal((await f.request(route, { values: valuesFor(route) })).res.statusCode, 403);
+    }
+});
 
 test('persona: preserves JPEG bytes and image content type', async t => {
     const f = await setup(t);
@@ -352,11 +380,10 @@ test('source isolation: matching group, chat, card, image, persona and lore name
     const f = await setup(t);
     const otherGroup = { ...f.group, name: 'Peer group', multiplayer: { owner: 'peer', accounts: ['guest'] } };
     const otherCard = { ...f.card, unknown: 'peer only' };
-    const otherPng = Buffer.concat([f.png, Buffer.from('peer metadata')]);
-    const otherPersona = Buffer.concat([f.persona, Buffer.from('peer')]);
+    const otherPng = createCardPng(otherCard);
+    const otherPersona = createCardPng({ name: 'Peer persona' });
     const otherLore = { entries: { 0: { content: 'Peer only', disable: true } } };
     const otherTranscript = [f.transcript[0], { name: 'Peer GM', mes: 'Peer only', send_date: '2026-01-01' }];
-    f.cards.set(otherPng.toString('base64'), JSON.stringify(otherCard));
     await f.put('peer', 'groups', 'scene.json', otherGroup);
     await f.put('peer', 'characters', 'GM ü.png', otherPng);
     await f.put('peer', 'avatars', 'history.png', otherPersona);
