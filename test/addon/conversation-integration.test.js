@@ -17,7 +17,7 @@ async function fixture(t, isOwner = true) {
     let failSave = false;
     const native = {
         groups: [{ id: 'g', chat_id: 'c', multiplayer: { owner: 'owner', accounts: ['guest'] } }], selectedGroup: 'g', chat: [], chat_metadata: {},
-        event_types: { CHAT_CHANGED: 'changed', MESSAGE_RECEIVED: 'received', STREAM_TOKEN_RECEIVED: 'stream', GROUP_WRAPPER_STARTED: 'started', GROUP_WRAPPER_FINISHED: 'finished' },
+        event_types: { CHAT_CHANGED: 'changed', GENERATION_STARTED: 'generation-started', GENERATION_AFTER_COMMANDS: 'after-commands', GENERATION_STOPPED: 'stopped', MESSAGE_RECEIVED: 'received', STREAM_TOKEN_RECEIVED: 'stream', GROUP_WRAPPER_STARTED: 'started', GROUP_WRAPPER_FINISHED: 'finished' },
         eventSource: { on(name, listener) { const list = events.get(name) ?? []; list.push(listener); events.set(name, list); }, removeListener() {}, async emit(name, ...args) { for (const listener of events.get(name) ?? []) { await listener(...args); } } },
         name1: 'PC', user_avatar: 'pc.png', power_user: {}, regex_placement: { USER_INPUT: 1 },
         getBiasStrings: () => ({}), getRegexedString: text => text, substituteParams: text => text,
@@ -124,6 +124,45 @@ test('native swipe receives the clicked message and awaits its persistence barri
     assert.equal(swiped, target);
     assert.equal(cancelled, true);
     assert.equal(h.saves.length, 1);
+});
+
+test('a queued swipe aborts when its stable target has disappeared', async t => {
+    const h = await fixture(t);
+    const target = { mes: 'older AI', is_user: false, extra: { multiplayer: { messageId: id } } };
+    h.native.chat.push(target, { mes: 'last AI', is_user: false });
+    h.integration.session.localSaved(h.native.chat);
+    const row = h.dom.window.document.createElement('div'); row.className = 'mes'; row.setAttribute('mesid', '0');
+    const button = h.dom.window.document.createElement('button'); button.className = 'swipe_right'; row.append(button); h.dom.window.document.querySelector('#chat').append(row);
+    let swiped = false;
+    h.native.swipe_right = async () => { swiped = true; };
+    button.click();
+    h.native.chat.shift();
+    await settle();
+    assert.equal(swiped, false);
+    assert.deepEqual(h.saves, []);
+});
+
+test('failed restoration cancels external generation after native replaces its abort controller', async t => {
+    const h = await fixture(t);
+    const fetch = h.dom.window.fetch;
+    h.dom.window.fetch = (url, options) => url === '/api/chats/group/get' ? Promise.resolve(Response.json({}, { status: 500 })) : fetch(url, options);
+    h.native.chat.push({ mes: 'unsaved AI', is_user: false });
+    h.failNextSave();
+    await h.native.saveChatConditional();
+    const emit = h.native.eventSource.emit;
+    h.native.eventSource.emit = async (...args) => { try { await emit(...args); } catch {} };
+    let aborted = false;
+    let modelRequests = 0;
+    h.native.stopGeneration = () => { aborted = true; };
+    const externalGenerate = async () => {
+        await h.native.eventSource.emit('generation-started', 'normal', {}, false);
+        aborted = false;
+        await h.native.eventSource.emit('after-commands', 'normal', {}, false);
+        if (!aborted) { modelRequests++; }
+    };
+    await externalGenerate();
+    await externalGenerate();
+    assert.equal(modelRequests, 0);
 });
 
 test('mounted command processing does not add a second human turn', async t => {

@@ -224,7 +224,7 @@ test('restoring an empty owner transcript clears failed in-memory changes withou
 
 test('a save for a different chat cannot confirm the selected chat attempt', async t => {
     const { adapter, native, window } = fixture(t);
-    window.fetch = async () => Response.json({ result: 'ok' });
+    window.fetch = async url => Response.json(url === '/api/chats/group/get' ? [] : { result: 'ok' });
     await adapter.reload(identity, { isOwner: true });
     native.saveChatConditional = async () => { await window.fetch('/api/chats/group/save', { method: 'POST', body: JSON.stringify({ id: 'another-chat', chat: [] }) }); };
     adapter.mount();
