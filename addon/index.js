@@ -1,9 +1,10 @@
+import { initializeConversations } from './conversation-bootstrap.js';
 import { initializeOwnership } from './ownership-bootstrap.js';
 import { getPluginStatus } from './plugin-status.js';
 
 const statusMessages = {
     checking: 'Checking server plugin…',
-    available: 'Server plugin connected. Shared multiplayer play is still under development.',
+    available: 'Server plugin connected. Shared conversations are available.',
     missing: 'The multiplayer server plugin is not installed or enabled.',
     unavailable: 'Could not verify the multiplayer server plugin. Check your connection and login, then try again.',
 };
@@ -61,7 +62,7 @@ function initializeAddon() {
         return;
     }
     if (globalThis.SillyTavern) {
-        void initializeOwnership().catch(error => globalThis.toastr?.error(error.message, 'Multiplayer'));
+        void initializeOwnership().then(() => initializeConversations()).catch(error => globalThis.toastr?.error(error.message, 'Multiplayer'));
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', mountStatusPanel, { once: true });

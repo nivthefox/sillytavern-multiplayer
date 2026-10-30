@@ -2,7 +2,7 @@
 
 A multiplayer addon for sharing a scene with friends and an AI GM in SillyTavern. Each player will speak through their own persona, while the scene owner controls AI turns and shares the group's characters and lorebooks. Everyone uses an account on the same SillyTavern server.
 
-**Still under development: shared multiplayer play is not available yet.** Chat ownership provides shared group discovery and reading, including while the owner is offline. Synchronized turns, generation authority, and shared lorebook access are not implemented yet.
+**Still under development.** Shared groups support synchronized human turns, edits and deletions, owner-controlled AI generation, and reading while the owner is offline. Shared lorebook access is not implemented yet.
 
 ## Requirements
 
@@ -60,7 +60,22 @@ Shared groups appear in participants’ normal character listing with an **Owned
 
 In extension settings, **Allow others to add me to shared groups** is enabled by default. Turning it off hides you from future account-choice listings; it does not remove existing memberships or choices already displayed to another user.
 
-This milestone only supports guest discovery, opening, and reading. Other guest controls remain unchanged and may behave incorrectly or make unsecured changes. Do not use them to play a shared scene yet.
+## Shared conversations
+
+Open the same shared chat in each participant’s browser. The first connected owning-account tab is authoritative; additional owning-account tabs act as guests. The owner’s browser must keep the chat open for play to advance.
+
+- **Send text** adds a persona-attributed human turn without generating an AI response. Send and keyboard submission use the same shared-turn flow.
+- **Request an AI turn** from the selected owner browser using empty-composer Send or a group member’s trigger control. Guests cannot generate or revise shared AI messages; private draft assistance remains available.
+- **Edit or delete** your own player messages. The selected owner can also edit AI messages and delete any message, including native bulk deletion. Player edits retain earlier versions as swipes.
+- **Saving…** means the change is still awaiting confirmation from the saved transcript—not merely acceptance by the event bus. Explicit failures show **Not saved**, with **Retry** and **Discard**. Neither operation replaces your current composer draft.
+
+During generation or owner disconnection, the saved conversation remains readable and drafting remains available, but shared changes pause. Reconnection reloads the saved transcript and reconciles pending changes without automatically resending them. Unsaved AI previews are removed on owner handoff, with an interruption notice when appropriate.
+
+The conversation integration is frontend-only and uses the existing plugin transport and resource routes. Ordinary chats retain their native handlers.
+
+## Development and validation
+
+Run `npm test` for the complete suite, or `npm run test:addon` for browser integration tests. Conversation tests use fake bus responses, saved-transcript fixtures, and native-interface/DOM substitutes; they need no live multi-account server or AI service.
 
 ## Updating
 
