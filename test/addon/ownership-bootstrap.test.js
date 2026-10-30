@@ -29,6 +29,10 @@ class NativeEvents {
         }
     }
 
+    makeFirst(name, listener) {
+        this.listeners.set(name, [listener, ...(this.listeners.get(name) ?? []).filter(item => item !== listener)]);
+    }
+
     removeListener(name, listener) {
         this.listeners.set(name, (this.listeners.get(name) ?? []).filter(item => item !== listener));
     }
@@ -160,7 +164,7 @@ function readingFixture() {
         getRequestHeaders: () => ({ token: 'csrf' }),
         clearChat: async () => { native.chat.splice(0); },
         printMessages: async () => { calls.push(['render', structuredClone(native.chat)]); },
-        updateChatMetadata: metadata => { calls.push(['metadata', metadata]); },
+        updateChatMetadata: metadata => { native.metadata = metadata; calls.push(['metadata', metadata]); },
         select_group_chats() {},
         reportError: error => { calls.push(['error', error.message]); },
         async openGroupById(id) {
@@ -175,6 +179,15 @@ function readingFixture() {
                 calls.push(['initializeAndSave']);
                 await window.fetch('/api/chats/group/save', { method: 'POST', body: '[]' });
             }
+            const metadata = transcript[0]?.chat_metadata ?? {};
+            metadata.integrity ??= 'native-generated-integrity';
+            if (Object.hasOwn(transcript[0] ?? {}, 'chat_metadata')) {
+                transcript.shift();
+            }
+            native.chat.push(...transcript);
+            await native.printMessages();
+            native.updateChatMetadata(metadata, true);
+            await events.emit('chat', selected.chat_id);
             calls.push(['nativeOpen', id]);
             return true;
         },
@@ -206,6 +219,16 @@ test('native opener establishes actual selected_group after source cards exist w
     assert.equal(f.calls.some(call => call[0] === 'initializeAndSave'), false);
     assert.deepEqual(f.group.members, ['Same.png']);
     assert.ok(f.calls.some(call => call[0] === 'nativeOpen'));
+});
+
+test('native open publishes one final saved metadata snapshot without leaking generated integrity', async () => {
+    const f = readingFixture();
+    await f.adapter.mount();
+    const snapshots = [];
+    f.native.eventSource.on('chat', () => { snapshots.push(structuredClone(f.native.metadata)); });
+    await f.adapter.openGroup('host', '7');
+    assert.deepEqual(snapshots, [{ world_info: 'World' }]);
+    assert.equal(f.calls.filter(call => call[0] === 'render').length, 1);
 });
 
 test('a shared group without stored chat IDs can establish native context without creating a transcript', async () => {
