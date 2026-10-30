@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-const module = await import('../../addon/chat-ownership.js').catch(error => {
-    if (error.code !== 'ERR_MODULE_NOT_FOUND') {
+const moduleUrl = new URL('../../addon/chat-ownership.js', import.meta.url);
+const module = await import(moduleUrl).catch(error => {
+    if (error.code !== 'ERR_MODULE_NOT_FOUND' || !error.message.includes(moduleUrl.pathname)) {
         throw error;
     }
     return {};
@@ -134,6 +135,47 @@ test('network and account listing errors are not converted into empty success', 
     await assert.rejects(f.service.listAccounts(), /500/);
     assert.equal(f.errors.length, 2);
 });
+
+test('overlapping creation submissions share one save operation and return its saved record', async () => {
+    const requests = [];
+    const responses = [];
+    const service = module.createChatOwnership({
+        account: { id: 'owner', name: 'Owner' },
+        extensionSettings: {},
+        saveSettings() {},
+        getRequestHeaders: () => ({}),
+        reportError() {},
+        fetch: (url, options) => {
+            requests.push({ url, options });
+            return new Promise(resolve => responses.push(resolve));
+        },
+    });
+    const first = service.createGroup({ members: ['A.png'] }, ['guest']);
+    const second = service.createGroup({ members: ['A.png'] }, ['guest']);
+    assert.equal(requests.length, 1, 'double submission must not create another native group');
+    responses.shift()(Response.json(group));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1].url, '/api/groups/edit');
+    let completed = false;
+    void first.then(() => { completed = true; });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(completed, false, 'completion must wait for the ownership save');
+    responses.shift()(Response.json({ ok: true }));
+    const results = await Promise.all([first, second]);
+    const expected = { ...group, multiplayer: { owner: 'owner', accounts: ['guest'] } };
+    assert.deepEqual(results, [expected, expected]);
+});
+
+for (const body of [null, {}, [null]]) {
+    test(`malformed transcript ${JSON.stringify(body)} reports a read error without writes`, async () => {
+        const f = fixture([ok(body)]);
+        await assert.rejects(f.service.loadChat('other', '42', 'chat'), /transcript/i);
+        assert.equal(f.errors.length, 1);
+        assert.equal(f.requests.length, 1);
+        assert.equal(f.requests[0].options.method, 'GET');
+    });
+}
 
 test('character cards and portrait URLs retain the owner source and native filename', async () => {
     const card = { name: 'Owner NPC', data: { extensions: { world: 'Book' } } };
