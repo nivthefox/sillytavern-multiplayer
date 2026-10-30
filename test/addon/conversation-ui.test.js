@@ -12,7 +12,7 @@ const integration = await import(moduleUrl).catch(error => {
 
 function fixture(t, stateOverrides = {}, renderMessage) {
     assert.equal(typeof integration.createConversationUI, 'function');
-    const dom = new JSDOM('<textarea id="send_textarea"></textarea><button id="send_but">Send</button><button id="option_regenerate">Regenerate</button><button id="option_delete_mes">Bulk delete</button><div id="chat"></div>', { url: 'http://localhost/' });
+    const dom = new JSDOM('<textarea id="send_textarea"></textarea><button id="send_but">Send</button><button id="option_regenerate">Regenerate</button><button id="option_delete_mes">Bulk delete</button><div id="chat"></div><div id="message_template" class="template_element"><div class="mes" mesid=""><div class="mes_buttons"><button class="mes_edit">Edit</button><button class="mes_edit_delete">Delete</button></div><button class="swipe_right">Swipe</button><input class="del_checkbox"></div></div>', { url: 'http://localhost/' });
     t.after(() => dom.window.close());
     const { document } = dom.window;
     const calls = [];
@@ -290,6 +290,33 @@ test('AI previews use native message markup, portrait, and formatting without ac
     preview.querySelector('.mes_edit').addEventListener('click', () => { edited = true; });
     preview.querySelector('.mes_edit').dispatchEvent(new f.window.MouseEvent('click', { bubbles: true, cancelable: true }));
     assert.equal(edited, false);
+});
+
+test('permission decoration never modifies hidden native message templates', t => {
+    const { document } = fixture(t, { connected: false, ownerPresent: false });
+    for (const control of document.querySelectorAll('#message_template button, #message_template input, #message_template .mes_buttons')) {
+        assert.equal(hidden(control), false);
+        assert.notEqual(control.disabled, true);
+    }
+});
+
+test('reloaded own messages and promoted-owner AI messages keep editable native controls', t => {
+    const { document, state, ui } = fixture(t);
+    const template = document.querySelector('#message_template .mes');
+    const own = template.cloneNode(true); own.setAttribute('mesid', '0');
+    const ai = template.cloneNode(true); ai.setAttribute('mesid', '1');
+    document.querySelector('#chat').append(own, ai);
+    state.messages = [
+        { is_user: true, extra: { multiplayer: { accountId: 'guest', messageId: 'own' } } },
+        { is_user: false, extra: { multiplayer: { messageId: 'ai' } } },
+    ];
+    ui.refresh();
+    assert.equal(hidden(own.querySelector('.mes_edit')), false);
+    assert.equal(hidden(ai.querySelector('.mes_edit')), true);
+    state.isOwner = true;
+    ui.refresh();
+    assert.equal(hidden(own.querySelector('.mes_edit')), false);
+    assert.equal(hidden(ai.querySelector('.mes_edit')), false);
 });
 
 test('dispose restores ordinary native submission handling', t => {
