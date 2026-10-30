@@ -6,7 +6,7 @@ import { mountConversations } from '../../addon/conversation-bootstrap.js';
 const id = '5ad90182-f1e2-4f6b-a143-c9d20d0b20d1';
 const chat = { accountId: 'owner', groupId: 'g', chatId: 'c' };
 
-async function fixture(t, isOwner = true) {
+async function fixture(t, isOwner = true, withLorebooks = false) {
     const dom = new JSDOM('<textarea id="send_textarea"></textarea><button id="send_but"></button><div id="chat"></div><button id="option_continue"></button><button id="option_regenerate"></button><button class="swipe_right"></button><div class="group_member" data-chid="0"><button data-action="speak"></button></div>', { url: 'http://localhost/' });
     const events = new Map();
     const handlers = new Map();
@@ -33,14 +33,19 @@ async function fixture(t, isOwner = true) {
         async saveChatConditional() { await dom.window.fetch('/api/chats/group/save', { method: 'POST', body: JSON.stringify({ id: 'c', chat: native.chat }) }); },
         async Generate(...args) { generated.push(args); }, stopGeneration() {}, shouldSendOnEnter: () => true, isPopupOpen: () => false,
     };
+    if (withLorebooks) {
+        Object.assign(native, { worldInfoCache: new Map(), world_names: [], selected_world_info: ['Global'], world_info: {}, characters: [], selected_group: 'g' });
+        native.power_user.persona_description_lorebook = 'PC';
+    }
     dom.window.fetch = async (url, options) => {
+        if (url.includes('/lore/')) { return Response.json({ entries: { 0: { uid: 0, content: 'Shared lorebook contents' } } }); }
         if (url.endsWith('/description')) { personaRequests.push(url); return Response.json({ description: 'A guest explorer.' }); }
         if (url === '/api/chats/group/save' && failSave) { failSave = false; return Response.json({ error: 'save failed' }, { status: 500 }); }
         if (url === '/api/chats/group/save') { saves.push(JSON.parse(options.body)); saved = structuredClone(native.chat); return Response.json({ result: 'ok' }); }
         return Response.json(saved);
     };
     const bus = {
-        async connect() {}, async join() { return { isOwner, ownerPresent: true }; }, async leave() {},
+        async connect() {}, async join() { return { isOwner, ownerPresent: true, ...(withLorebooks ? { lorebooks: [{ accountId: 'other', filename: 'World.json' }] } : {}) }; }, async leave() {},
         async send(...args) { sent.push(args); },
         on(name, listener) { const list = handlers.get(name) ?? []; list.push(listener); handlers.set(name, list); return () => { handlers.set(name, list.filter(value => value !== listener)); }; },
     };
@@ -50,6 +55,17 @@ async function fixture(t, isOwner = true) {
 }
 
 async function settle() { for (let i = 0; i < 5; i++) { await new Promise(resolve => setImmediate(resolve)); } }
+
+test('conversation startup mounts shared lorebooks on its existing bus and removes access on chat exit', async t => {
+    const h = await fixture(t, true, true);
+    assert.deepEqual(h.sent.find(item => item[1] === 'multiplayer.lorebooks.set'), ['server', 'multiplayer.lorebooks.set', { lorebooks: ['Global.json', 'PC.json'] }]);
+    assert.equal(h.native.worldInfoCache.has('World'), true);
+    assert.equal(h.native.worldInfoCache.get('World').entries[0].content, 'Shared lorebook contents');
+    h.native.selectedGroup = null;
+    h.native.selected_group = null;
+    await h.native.eventSource.emit('changed');
+    assert.equal(h.native.worldInfoCache.has('World'), false);
+});
 
 test('shared generation injects only other accounts latest saved personas and preserves our native persona', async t => {
     const h = await fixture(t);
