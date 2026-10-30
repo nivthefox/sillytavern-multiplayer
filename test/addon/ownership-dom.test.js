@@ -180,6 +180,22 @@ test('message image failures use the default avatar before native destructive ha
     }
 });
 
+test('relative portrait URLs resolve against the document base instead of a dummy root', async t => {
+    const f = await fixture(t);
+    await f.adapter.openGroup('host', '42');
+    const base = f.document.createElement('base');
+    base.href = 'https://tavern.example/nested/';
+    f.document.head.append(base);
+    const remote = f.native.characters.find(character => character.multiplayer?.accountId === 'host');
+    const image = f.document.createElement('img');
+    const relative = `thumbnail?type=avatar&file=${encodeURIComponent(remote.avatar)}`;
+    image.setAttribute('src', relative);
+    f.document.body.append(image);
+    await settle();
+    assert.equal(image.getAttribute('src'), relative, 'a nested thumbnail path is not the native root thumbnail route');
+    assert.equal(image.src, `https://tavern.example/nested/${relative}`);
+});
+
 test('opening a shared group publishes its final transcript once through native CHAT_CHANGED', async t => {
     const f = await fixture(t);
     const changes = [];

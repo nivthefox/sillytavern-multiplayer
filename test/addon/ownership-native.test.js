@@ -140,7 +140,7 @@ function fixture(overrides = {}) {
         }
         return Response.json({ ok: true });
     };
-    const window = { fetch: nativeFetch };
+    const window = { fetch: nativeFetch, location: { href: 'https://tavern.example/' } };
     const native = {
         chat: [{ mes: 'Previous' }],
         groups: [{ id: 'local', members: ['Guide.png'] }],
@@ -249,6 +249,23 @@ test('native creation request is completed with the service-owned full record', 
     const response = await f.window.fetch('/api/groups/create', { method: 'POST', headers: f.native.getRequestHeaders(), body: JSON.stringify(model) });
     assert.deepEqual(await response.json(), { ...model, id: 'created', multiplayer: { owner: 'guest', accounts: [] } });
     assert.deepEqual(f.calls.filter(call => call[0] === 'createGroup'), [['createGroup', model, []]]);
+});
+
+test('relative native requests resolve against the document base URL', async () => {
+    const f = fixture();
+    f.document.baseURI = 'https://tavern.example/api/groups/';
+    await f.adapter.mount();
+    const response = await f.window.fetch('create', { method: 'POST', body: JSON.stringify({ members: ['Guide.png'] }) });
+    assert.equal((await response.json()).multiplayer?.owner, 'guest');
+    assert.equal(f.calls.filter(call => call[0] === 'createGroup').length, 1);
+});
+
+test('relative native requests use the supplied browser location without a document base', async () => {
+    const f = fixture();
+    f.window.location.href = 'https://tavern.example/api/groups/';
+    await f.adapter.mount();
+    const response = await f.window.fetch('create', { method: 'POST', body: JSON.stringify({ members: ['Guide.png'] }) });
+    assert.equal((await response.json()).multiplayer?.owner, 'guest');
 });
 
 test('selected Account cards are passed to creation without rechecking eligibility', async () => {
