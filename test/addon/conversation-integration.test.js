@@ -174,6 +174,22 @@ test('mounted command processing does not add a second human turn', async t => {
     assert.deepEqual(h.generated, []);
 });
 
+test('stream previews wait for native rendered content and never publish reasoning', async t => {
+    const h = await fixture(t);
+    await h.integration.session.generationStatus(true);
+    h.native.chat.push({ mes: 'previous', name: 'GM', is_user: false, extra: { reasoning: 'secret' } });
+    h.native.streamingProcessor = { messageId: 0, type: 'normal' };
+    const text = h.dom.window.document.createElement('div'); text.className = 'mes_text'; h.dom.window.document.querySelector('#chat').append(text);
+    await h.native.eventSource.emit('stream', 'new response');
+    assert.equal(h.sent.filter(([, event]) => event === 'multiplayer.generation.preview').length, 0);
+    h.native.chat[0].mes = 'new response';
+    text.textContent = 'new response';
+    await settle();
+    const preview = h.sent.filter(([, event]) => event === 'multiplayer.generation.preview').at(-1)?.[2];
+    assert.equal(preview?.text, 'new response');
+    assert.equal(JSON.stringify(preview).includes('secret'), false);
+});
+
 test('native generation saves notify viewers and assign AI identity before persistence', async t => {
     const h = await fixture(t);
     const ai = { mes: 'AI response', name: 'GM', is_user: false, extra: {} };
