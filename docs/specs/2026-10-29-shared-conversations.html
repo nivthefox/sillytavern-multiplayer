@@ -259,26 +259,77 @@
 
     <section id="problem">
         <h2>Problem</h2>
-        <p>SillyTavern’s native chat handling saves whole transcripts from individual browsers and does not identify human-message authors by account. These mechanisms make it impossible to coordinate contributions from multiple human participants within a single scene.</p>
+        <p>SillyTavern’s native chat handling saves whole chats from individual browsers and does not identify human-message authors by account. These mechanisms make it impossible to coordinate contributions from multiple human participants within a single scene.</p>
         <p>Participants in a multi-account group chat need to play distinct characters in a shared scene with an AI GM, using a SillyTavern persona to represent each player’s character. The players need to add turns to the chat without triggering an AI response after every message. The account that owns the shared group needs to control when the AI GM responds to the conversation.</p>
         <p>All accounts participating in the shared chat need to see the same message history, including edits and deletions. Each player’s messages need to remain attributable to the account that submitted them and the persona that account used to speak.</p>
     </section>
     <section id="solution">
         <h2>Solution</h2>
         <p>This work implements the addon entirely in the frontend/browser. It makes no server-side or Plugin changes.</p>
-        <p>When a guest is connected to a multiplayer shared chat, its native turn submission, transcript modification, and generation pathways are replaced with coordinated requests using the multiplayer Plugin for communication between browsers.</p>
-        <p>One connection by an owner is treated as authoritative by the Plugin, and processes those requests through SillyTavern, saving the resulting transcript. Additional owner tabs are treated as guests.</p>
+        <p>Guests send turn, edit, and deletion requests through the multiplayer Plugin’s event bus. The selected owner browser performs accepted requests through SillyTavern’s native paths and saves the resulting chat. Its own actions use those same native paths without sending requests through the bus. Additional owning-account tabs are treated as guests.</p>
+        <p>The addon uses the <a href="2026-10-30-server-plugin.html#behavior">Server Plugin’s HTTP routes and browser event-bus library</a>. The Plugin supplies transport and owner selection; this frontend feature supplies request handling, pending-change confirmation from saved chats, save notifications, and generation updates.</p>
     </section>
     <section id="behavior">
         <h2>Behavior</h2>
         <h3>Opening a shared chat</h3>
-        <p>When a user opens a shared chat, the addon reports which chat it has loaded to the Plugin and receives the connection’s authority status. On reconnection, the addon reloads the saved chat file without replacing the user’s current composer draft.</p>
-        <p>A shared chat is active for play only while the owner has it open in a browser connected to the multiplayer Plugin. Different chats can be active in separate owner tabs. Without a connected owner tab viewing the chat, guests can read its stored transcript and compose drafts, but turn submissions, edits, deletions, and AI generation requests are rejected.</p>
+        <p>When a user opens a shared chat, the addon uses the Plugin browser library’s join operation and adopts the returned <code>isOwner</code> and <code>ownerPresent</code> values. It handles subsequent changes through <code>bus.status</code>. Owner presence means the chat is ready for play.</p>
+        <p>The addon uses the Server Plugin’s library lifecycle and reconnection contracts. On <code>bus.disconnected</code>, it disables shared-chat changes while retaining the displayed chat and composer draft; owner-side work and previews follow Changing the authoritative owner connection and the existing interruption outcome. The library handles reconnection and rejoining. After rejoining, the addon adopts the supplied owner status and reloads the saved chat without replacing the draft.</p>
+        <p>Browsers use SillyTavern’s native loading and rendering paths wherever possible. The selected owner reads and saves its chat through the native group-chat paths. Cross-account chat reads use <code>GET /chats/&lt;accountID&gt;/groups/&lt;groupID&gt;/chats/&lt;chatID&gt;</code>, following the Server Plugin’s contract for that route. Whole chats are loaded over HTTP, not sent through the event bus. Guest loading must not initialize or save a chat, including when the saved chat is empty.</p>
+        <p>A shared chat is active for play only while the owner has it open in a browser connected to the multiplayer Plugin. Different chats can be active in separate owner tabs. Without a connected owner tab viewing the chat, guests can read its stored chat and compose drafts, but turn submissions, edits, and deletions are rejected and shared-chat generation is unavailable.</p>
         <h3>Adding a turn to the chat</h3>
         <p>Sending a human turn adds a user message to the shared chat without automatically requesting an AI response.</p>
         <p>The sending user immediately sees the submitted turn with a dashed border and a persistent “Saving…” label. The pending turn cannot be interacted with, and its message controls are visibly disabled. Once saving is confirmed, the turn adopts the normal message appearance and the addon enables the message interactions permitted for that user. Other connections viewing the chat display the new turn after receiving confirmation that it has been saved.</p>
-        <p>The addon assigns each turn, edit, or deletion request a unique submission identifier and retains it through retries and save confirmations, allowing a pending change to be matched to its saved outcome after reconnection.</p>
-        <p>The authoritative owner’s addon processes turns, edits, deletions, and generation requests in the order they enter its queue, including locally submitted requests. Each transcript save completes before the addon applies the next queued change.</p>
+        <p>The authoritative owner’s addon coordinates guest requests and local native actions in one ordered queue. Each chat save completes before the addon applies the next queued change or starts generation.</p>
+        <h4>Submission handling</h4>
+        <p>In shared chats, the addon intercepts Send clicks and native keyboard submission shortcuts in the DOM capture phase, before the original submission handlers run. This includes Enter-to-send and Ctrl+Enter with text, which can bypass the Send button. Ordinary chats retain their normal handlers.</p>
+        <p>The replacement handling runs native command processing first. Input handled as a command is not also submitted as a player turn. For the selected owner’s text turns, the addon uses native user-message preparation, insertion, saving, and rendering without entering the generation flow. Empty-composer Send in that browser retains the native generation path described under Requesting an AI turn.</p>
+        <p>For guest text turns, the addon assembles the preparation sequence using SillyTavern’s exported native helpers for user-input regexes, macro expansion, bias handling, timestamps, token counting, and attachment preparation. Preparation runs in the guest’s context. The addon captures the prepared message after those operations and any changes they await, displays it as pending separately from the saved chat, and submits it through the send event below without saving locally.</p>
+        <h4>Send event</h4>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.message.send</code></td><td>Guest browser, including an additional owning-account tab</td><td><code>owner</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>message</code></td><td>The prepared native user-message object described below.</td></tr>
+                <tr><td><code>iteration</code></td><td>The attempt number defined under Retrying a failed change.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Prepared message</caption>
+            <thead><tr><th>Message field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>mes</code></td><td>The prepared message text.</td></tr>
+                <tr><td><code>name</code>, <code>force_avatar</code></td><td>The persona snapshot defined under Identifying the speaker.</td></tr>
+                <tr><td><code>send_date</code></td><td>The native send timestamp created during guest preparation.</td></tr>
+                <tr><td><code>is_user</code>, <code>is_system</code></td><td><code>true</code> and <code>false</code>, respectively.</td></tr>
+                <tr><td><code>extra</code></td><td>The prepared extension metadata, including <code>multiplayer.messageId</code>. Other extension metadata is preserved.</td></tr>
+            </tbody>
+        </table>
+        <p>The selected owner validates the message shape and user-message flags before accepting the request into its ordered queue. Malformed requests do not change the chat. Requests received during shared-chat generation follow Player actions during an AI turn. Account attribution follows Identifying the speaker, and the owner ensures the portrait refers to the authenticated sender’s account.</p>
+        <p>To apply an accepted turn, the owner inserts the prepared message using native chat persistence, rendering, and message-event facilities. It preserves the guest’s prepared text, timestamp, and metadata rather than running the owner’s send-time transformations or attachment preparation over them. This operation adds a human turn without generating an AI response. Its successful save follows the Saved-change event contract.</p>
+        <h4>Saved-change event</h4>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.chat.saved</code></td><td>Selected owner browser</td><td><code>all</code> after a successful save; the requesting event’s <code>sender.connectionId</code> for an already-confirmed retry or an already-absent deletion target.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td>Entire body</td><td>An empty JSON object.</td></tr>
+            </tbody>
+        </table>
+        <p>After a native chat save succeeds, the selected owner’s addon sends <code>multiplayer.chat.saved</code> to <code>all</code> with an empty JSON object as its body. This includes saves from local owner actions and AI responses. The event carries no message contents. A failed save produces no saved-change event.</p>
+        <p>Save confirmation must establish that persistence succeeded. Completion of a native save helper alone is not proof: native saving can report an error locally and still return normally. This applies to saves from message actions, native generation, and addon workflows. A lost save response leaves the outcome uncertain rather than confirming failure.</p>
+        <p>The selected owner ignores its own event. Other viewing browsers reload the saved chat over HTTP without saving it themselves or replacing their composer drafts. Bus acceptance of a request does not confirm that the change was saved.</p>
+        <p>The sending browser confirms its pending change from the reloaded chat: a new message is confirmed by finding its <code>extra.multiplayer.messageId</code>, a deletion by that message’s absence, and a player-message edit by matching the attempted replacement text against that message’s current <code>mes</code> value. A later edit from another tab of the same account may supersede the attempted text before confirmation; this is accepted behavior. A matching saved outcome clears the pending display; an unrelated save does not.</p>
         <div class="mermaid">
 sequenceDiagram
     participant Guests as Guest / additional owner browsers
@@ -287,33 +338,198 @@ sequenceDiagram
     participant Server as SillyTavern server
 
     Guests->>Guests: Sending browser displays pending, non-interactive turn
-    Guests->>Plugin: Submit human turn
-    Plugin->>Owner: Forward submission
+    Guests->>Plugin: multiplayer.message.send to owner with prepared message
+    Plugin->>Owner: Deliver turn with authenticated sender
     Owner->>Owner: Queue turn, then apply when preceding save completes
-    Owner->>Server: Save updated transcript
+    Owner->>Server: Save updated chat
     Server-->>Owner: Save confirmation
-    Server-->>Plugin: Transcript saved
-    Plugin-->>Guests: Notify connections viewing the chat of the saved turn
+    Owner->>Plugin: Publish saved-change notification
+    Plugin-->>Guests: Deliver saved-change notification
+    Guests->>Server: Load saved chat over HTTP
+    Server-->>Guests: Saved chat
     Guests->>Guests: Sender confirms pending turn, other viewers display new turn
         </div>
+        <h4>Action-failure events</h4>
+        <p>When a requested change is rejected or confirmed not saved, the selected owner sends the corresponding failure event directly to the requesting event’s <code>sender.connectionId</code>, using the Server Plugin’s connection-ID destination.</p>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.message.send_failure</code></td><td>Selected owner browser</td><td>Requesting event’s <code>sender.connectionId</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>messageId</code></td><td>The affected message’s stable identifier.</td></tr>
+                <tr><td><code>iteration</code></td><td>The request’s attempt number, echoed unchanged.</td></tr>
+                <tr><td><code>reason</code></td><td>A human-readable explanation of the rejection or save failure.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.message.edit_failure</code></td><td>Selected owner browser</td><td>Requesting event’s <code>sender.connectionId</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>messageId</code></td><td>The affected message’s stable identifier.</td></tr>
+                <tr><td><code>text</code></td><td>The attempted replacement text.</td></tr>
+                <tr><td><code>iteration</code></td><td>The request’s attempt number, echoed unchanged.</td></tr>
+                <tr><td><code>reason</code></td><td>A human-readable explanation of the rejection or save failure.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.message.delete_failure</code></td><td>Selected owner browser</td><td>Requesting event’s <code>sender.connectionId</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>messageId</code></td><td>The affected message’s stable identifier.</td></tr>
+                <tr><td><code>iteration</code></td><td>The request’s attempt number, echoed unchanged.</td></tr>
+                <tr><td><code>reason</code></td><td>A human-readable explanation of the rejection or save failure.</td></tr>
+            </tbody>
+        </table>
+        <p>The receiving browser matches the event to its pending change using the event name, message identifier, iteration, and replacement text for an edit. A failure from an earlier iteration does not mark the current attempt failed. It applies the “Not saved” treatment under Edge Cases to that change. The selected owner handles failures of its own local actions locally. An uncertain save outcome does not produce a failure event and leaves the change pending.</p>
+        <p>These events also report rejection before saving: insufficient edit or deletion permission, a shared AI turn in progress, an edit targeting a deleted message, or invalid request data. A deleted edit target uses the reason “This message has been deleted.” Invalid requests receive a failure event when they contain enough identifying information to match the pending action. Rejected requests leave the saved chat unchanged.</p>
+        <h4>Retrying a failed change</h4>
+        <p>All three message-action bodies include <code>iteration</code>, a non-negative integer starting at <code>0</code> for each new action and incremented each time the user selects Retry. A new edit or deletion starts at zero even when targeting a previously changed message.</p>
+        <p>Retry resends the same prepared action through <code>multiplayer.message.send</code>, <code>multiplayer.message.edit</code>, or <code>multiplayer.message.delete</code>. A new turn retains its message identifier and prepared message; an edit retains its target identifier and prepared text; a deletion retains its target identifier. Retry does not replace the composer draft.</p>
+        <p>Before applying an action with <code>iteration</code> greater than zero, the selected owner checks the saved chat using the confirmation rules under Saved-change event. If those rules already confirm the outcome, it does not apply the action again. Instead, it sends <code>multiplayer.chat.saved</code> directly to the retrying event’s <code>sender.connectionId</code> so that browser reloads the saved chat. Otherwise, it processes the action normally. Local owner retries use the same saved-state checks without sending a bus request.</p>
+        <p>After a confirmed save failure, the selected owner restores the saved chat before processing further changes. Failed in-memory changes must not be mistaken for saved outcomes or included in a later save. The attempted change remains available in its separate unsaved display for Retry or Discard.</p>
         <h3>Identifying the speaker</h3>
-        <p>Each human turn retains SillyTavern’s native message data for the sending user’s persona name and portrait. The addon adds the submitting account’s identifier to the message’s extension metadata, preserving existing message data and metadata from other extensions.</p>
-        <p>The authoritative owner’s addon records the authenticated submitting account, not the account processing the turn. Changing the sending user’s active persona affects future turns without rewriting the speaker data on earlier messages.</p>
+        <p>Human turns store their speaker data in the following fields, preserving other native message data and metadata from other extensions.</p>
+        <table>
+            <thead><tr><th>Field</th><th>Stored value</th></tr></thead>
+            <tbody>
+                <tr><td><code>name</code></td><td>The sending user’s persona name when the turn was sent.</td></tr>
+                <tr><td><code>force_avatar</code></td><td>A portrait URL using the Server Plugin’s Persona image route, <code>GET /accounts/&lt;accountID&gt;/personas/&lt;filename&gt;</code>, under the Plugin’s API mount. The account and image filename identify the sender’s persona portrait when the turn was sent; URL encoding and access follow that route’s contract.</td></tr>
+                <tr><td><code>extra.multiplayer.accountId</code></td><td>The submitting account’s authenticated handle.</td></tr>
+                <tr><td><code>extra.multiplayer.messageId</code></td><td>The message’s stable identifier, stored as a UUID string.</td></tr>
+            </tbody>
+        </table>
+        <p>The selected owner takes <code>accountId</code> from the bus-supplied sender for guest requests, or from its authenticated account for local turns, rather than trusting an account claimed in the request body. Changing the sending user’s active persona affects future turns without rewriting the speaker data on earlier messages.</p>
+        <p>A sending browser assigns a new player message its identifier before submission, so the pending message and its saved version have the same identity. Edits retain that identity; deletions target it rather than a chat position.</p>
+        <p>New AI messages receive identifiers before their first preview or save, including responses generated without streaming. A newly generated swipe retains the message’s identifier in its <code>swipe_info</code> entry’s <code>extra.multiplayer.messageId</code>, so native swipe selection preserves the identity of the message.</p>
         <h3>Message controls and permissions</h3>
-        <p>A guest account may edit or delete only messages attributed to that account. The addon hides all message controls on other messages, including AI responses. The owning account may edit only its own messages and AI responses; edit controls are hidden on guest-authored messages. It may delete any message. These permissions also apply when using an additional owner connection.</p>
-        <p>The owning account retains SillyTavern’s native bulk deletion, which removes the selected message and all messages after it. Guests have only single-message deletion; the addon hides bulk-deletion controls and rejects bulk-deletion requests from guest accounts.</p>
+        <p>Only the selected owner browser may edit AI responses, delete messages authored by other accounts, or use bulk deletion. It may edit its own account’s player messages but not other accounts’ player messages; edit controls are hidden on those messages.</p>
+        <p>Every other browser, including additional tabs from the owning account, may edit or single-delete only player messages attributed to its authenticated account. The addon hides all message controls on other messages, including AI responses. The selected owner applies these restrictions to every incoming bus request, including requests from its own account.</p>
+        <p>The selected owner retains SillyTavern’s native bulk deletion, which removes the selected message and all messages after it. Every other browser has bulk-deletion controls hidden, and the selected owner rejects all bulk-deletion requests received through the bus.</p>
         <p>Edits and deletions follow the same submission, queueing, saving, and notification flow as adding a turn to the chat. The authoritative owner’s addon checks edit and deletion requests against these account permissions before applying them.</p>
+        <p>Editing a player message appends the revised text to its native <code>swipes</code> array and selects the new swipe, preserving earlier versions, including the original text. This applies both to the selected owner’s local edits and to edits it performs for other browsers. Swipes need no separate stable identifier. The selected owner’s local edits to AI responses retain SillyTavern’s native in-place behavior.</p>
+        <h4>Player-message swipe metadata</h4>
+        <p>The addon initializes player-message swipe data because SillyTavern’s native swipe initializer skips user messages. Before the first edit of a player message without swipe history, it sets <code>swipes</code> to an array containing the original text, <code>swipe_id</code> to <code>0</code>, and <code>swipe_info</code> to an array containing the original version’s metadata entry.</p>
+        <p>Each edit appends a metadata entry to <code>swipe_info</code> at the same index as its new text in <code>swipes</code>. Existing entries remain intact. Each entry contains:</p>
+        <table>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>send_date</code></td><td>The original message timestamp. Editing does not change when the turn was sent.</td></tr>
+                <tr><td><code>extra</code></td><td>An independent copy of that version’s message metadata, including <code>multiplayer.accountId</code> and <code>multiplayer.messageId</code>. Metadata objects are not shared between revisions.</td></tr>
+            </tbody>
+        </table>
+        <p>Human edits do not add AI generation timestamps. Selecting a player-message swipe restores its text and metadata together, retaining the message’s identity and account attribution.</p>
+        <h4>Edit event</h4>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.message.edit</code></td><td>Browser other than the selected owner</td><td><code>owner</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>messageId</code></td><td>The target message’s <code>extra.multiplayer.messageId</code>.</td></tr>
+                <tr><td><code>text</code></td><td>The replacement text, prepared in the editing browser using native edit-time processing.</td></tr>
+                <tr><td><code>iteration</code></td><td>The attempt number defined under Retrying a failed change.</td></tr>
+            </tbody>
+        </table>
+        <p>The selected owner finds the message by its stable identifier and checks the authenticated sender against Message controls and permissions. A request targeting a deleted message follows the existing deleted-message outcome; requests received during generation follow Player actions during an AI turn.</p>
+        <p>For an accepted player-message edit, the owner appends the prepared text to <code>swipes</code>, sets <code>swipe_id</code> to the new array index, and sets <code>mes</code> to that text, preserving earlier versions. It does not repeat edit-time text processing on the received text. The owner saves the change and publishes <code>multiplayer.chat.saved</code> after success. Local owner edits use the permissions and editing behavior above without sending an edit event.</p>
+        <h4>Deletion event</h4>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.message.delete</code></td><td>Browser other than the selected owner</td><td><code>owner</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>messageId</code></td><td>The target message’s <code>extra.multiplayer.messageId</code>.</td></tr>
+                <tr><td><code>iteration</code></td><td>The attempt number defined under Retrying a failed change.</td></tr>
+            </tbody>
+        </table>
+        <p>The selected owner checks the authenticated sender against Message controls and permissions. Deletion events remove only one message; bulk deletion remains a selected-owner-local action. Requests received during generation follow Player actions during an AI turn.</p>
+        <p>When applying an accepted request in its ordered queue, the owner resolves the target by its stable identifier and performs native single-message deletion. For an already-absent target, the owner deletes nothing and sends <code>multiplayer.chat.saved</code> directly to the requesting event’s <code>sender.connectionId</code>. The requester reloads the saved chat and confirms the target’s absence; no new save is needed. The owner saves changes and publishes <code>multiplayer.chat.saved</code> after success; other browsers confirm deletion from the reloaded chat. Local owner deletions use the selected owner’s permissions, including bulk deletion, without sending a deletion event.</p>
         <h3>Requesting an AI turn</h3>
-        <p>The owning account uses SillyTavern’s existing generation controls: Send with an empty composer requests a group response using the group’s configured character-selection rules, and “Trigger a message from this character” requests a response from the selected group member. The addon permits these generation requests only from the owning account.</p>
-        <p>Generation requests follow the same submission route as human turns. The authoritative owner’s addon runs the requested generation through SillyTavern using the owner’s AI settings.</p>
+        <p>Only the selected owner browser can start shared-chat generation, using SillyTavern’s existing controls and the owner’s AI settings. Send with an empty composer requests a group response using the group’s configured character-selection rules, and “Trigger a message from this character” requests a response from the selected group member.</p>
+        <p>Generation that adds or revises shared conversation messages is disabled in every other browser, including additional tabs from the owning account. Shared-chat generation starts locally through the selected owner’s native paths; there is no bus request to start it.</p>
+        <h4>Addon generation and draft assistance</h4>
+        <p>Generation and revision workflows from addons such as inSTead and Guided Generation run only in the selected owner browser. In other browsers, the multiplayer addon makes a best effort to disable known addon controls that generate or revise shared conversation messages by hiding them and intercepting their activation, including controls added dynamically.</p>
+        <p>Private draft assistance remains available to guests, including Guided Generation’s Guided Impersonate actions. These use the guest browser’s configured generation settings and place their result in its composer without changing the shared chat. The result remains a draft until the guest submits it through the normal shared-turn flow.</p>
+        <h4>Generation-status events</h4>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.generation.status</code></td><td>Selected owner browser</td><td><code>all</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>generating</code></td><td>A boolean indicating whether a shared AI turn is in progress.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.generation.status_request</code></td><td>Browser other than the selected owner</td><td><code>owner</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td>Entire body</td><td>An empty JSON object.</td></tr>
+            </tbody>
+        </table>
+        <p>The selected owner publishes <code>multiplayer.generation.status</code> with <code>generating: true</code> when a shared AI turn starts and <code>generating: false</code> when it finishes, stops, or fails. The status covers the whole group turn, including multiple character responses, whether or not output is streamed. Private draft assistance does not change this status.</p>
+        <p>After joining or reconnecting to a chat with an owner present, another browser sends <code>multiplayer.generation.status_request</code>. The selected owner answers by publishing its current generation status. Receiving browsers apply the restrictions under Player actions during an AI turn without disturbing composer drafts.</p>
         <h3>Displaying the AI response</h3>
-        <p>When SillyTavern streams an AI response, the authoritative owner’s addon sends the live output through the Plugin to the other connections viewing that chat. Each receiving addon updates the same AI message as more text arrives, allowing everyone to follow the response together.</p>
-        <p>Streamed output remains provisional until its transcript save is confirmed. The saved message replaces the streaming preview rather than appearing as a duplicate. When streaming is disabled, other connections display the generated message after it has been saved.</p>
+        <p>While SillyTavern streams an AI response, the selected owner sends <code>multiplayer.generation.preview</code> to <code>all</code>.</p>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.generation.preview</code></td><td>Selected owner browser</td><td><code>all</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>messageId</code></td><td>The AI message’s stable identifier, retained in <code>extra.multiplayer.messageId</code> when saved.</td></tr>
+                <tr><td><code>name</code>, <code>force_avatar</code></td><td>The responding character’s display name and portrait URL.</td></tr>
+                <tr><td><code>text</code></td><td>The current accumulated response text.</td></tr>
+            </tbody>
+        </table>
+        <p>The selected owner ignores its own preview events. Other browsers keep one provisional AI message per <code>messageId</code> and replace its preview text with each update’s <code>text</code>, rather than appending tokens or creating another message. Preview events carry the active response text, not the whole chat or the model’s reasoning stream.</p>
+        <p>Streamed output remains provisional until saved. The HTTP reload triggered by <code>multiplayer.chat.saved</code> replaces the preview with the saved message bearing the same identifier, without duplication. When streaming is disabled, no preview events are sent and other connections display the generated message after it has been saved. Owner disconnection follows the existing AI-generation interruption outcome.</p>
         <h3>Player actions during an AI turn</h3>
-        <p>While an AI turn is in progress, all users viewing that chat can continue composing drafts, but the addon disables turn submission, message editing, and message deletion. The authoritative owner’s addon rejects those requests during generation rather than queueing them for later.</p>
+        <p>While a shared AI turn is in progress, all users viewing that chat can continue composing drafts, but the addon disables turn submission, message editing, and message deletion. The authoritative owner’s addon rejects those requests during generation rather than queueing them for later.</p>
         <h3>Changing the authoritative owner connection</h3>
-        <p>The addon reports when its user leaves a shared chat. If the authoritative owner connection loses its Plugin connection, leaves the chat, or loses its authority assignment, its addon stops generation and stops processing or saving changes for that chat.</p>
-        <p>On receiving authority, the replacement owner’s addon loads the last saved transcript before telling the Plugin it is ready to process requests. During this handoff, the other users retain their displayed transcript and drafts, but turn submissions, edits, deletions, and generation requests are rejected until the replacement is ready.</p>
+        <p>The addon uses the Plugin browser library’s leave operation when its user leaves a shared chat. If the authoritative owner receives <code>bus.disconnected</code>, leaves the chat, or loses its authority assignment through <code>bus.status</code>, its addon stops shared-chat generation and stops processing or saving changes for that chat.</p>
+        <p>On receiving authority, the replacement owner’s addon requests the chat again through SillyTavern’s native loading path. Other users retain their displayed chat and drafts and use the Plugin’s owner-presence status.</p>
+        <p>The addon handles the Server Plugin’s server-originated <code>multiplayer.owner.changed</code> event when the selected owner leaves or disconnects, including when an immediate replacement keeps owner presence true. Viewers discard unsaved AI previews and clear the previous owner’s generation status. If an owner remains present, they request its current generation status through <code>multiplayer.generation.status_request</code>. This introduces no readiness handshake or additional delivery guarantee.</p>
         <div class="mermaid">
 sequenceDiagram
     participant Viewers as Other viewing browsers
@@ -323,20 +539,18 @@ sequenceDiagram
     participant Server as SillyTavern server
 
     Previous--xPlugin: Connection lost
-    Plugin-->>Viewers: Writing connection unavailable
-    Note over Viewers: Keep transcript and drafts visible
-    Plugin-->>Replacement: Authority assigned
-    Replacement->>Server: Load last saved transcript
-    Server-->>Replacement: Saved transcript
-    Replacement->>Plugin: Ready to process requests
-    Plugin-->>Viewers: Writing connection ready
+    Note over Viewers: Keep chat and drafts visible
+    Plugin-->>Replacement: bus.status with isOwner true
+    Plugin-->>Viewers: Owner presence supplied by Plugin status
+    Replacement->>Server: Reload chat through native path
+    Server-->>Replacement: Saved chat
         </div>
     </section>
     <section id="edge-cases">
         <h2>Edge Cases</h2>
         <dl class="edge-case">
             <dt>Concurrent edits to the same message</dt>
-            <dd>Edits use last-in-wins ordering based on arrival at the authoritative owner’s queue. Each successful edit replaces the saved message text, including when the edit was composed from an earlier version.</dd>
+            <dd>Edits use last-in-wins ordering based on arrival at the authoritative owner’s queue, including when composed from an earlier version. For player messages, each edit adds a swipe and the latest edit becomes selected; earlier revisions remain in the swipe array. AI-response edits replace the text in place.</dd>
         </dl>
         <dl class="edge-case">
             <dt>A request targets an already-deleted message</dt>
@@ -344,76 +558,158 @@ sequenceDiagram
         </dl>
         <dl class="edge-case">
             <dt>The authoritative owner disconnects during AI generation</dt>
-            <dd>Remove the unsaved streaming preview, retain the last saved transcript, and show “AI generation interrupted.” A replacement owner connection does not restart generation automatically; the owning account requests another AI turn when ready.</dd>
+            <dd>Remove the unsaved streaming preview, retain the last saved chat, and show “AI generation interrupted.” A replacement owner connection does not restart generation automatically; the selected owner requests another AI turn when ready.</dd>
         </dl>
         <dl class="edge-case">
-            <dt>A submitted turn, edit, or deletion fails to save</dt>
-            <dd>When saving is confirmed to have failed, keep the affected message visible with “Not saved” and offer Retry and Discard. A failed edit retains the attempted text as unsaved; a failed deletion leaves the message visible. Retry repeats the attempted change. Discard returns the display to the currently saved state, removing a new unsaved turn. Neither action overwrites the user’s current composer draft.</dd>
+            <dt>A submitted turn, edit, or deletion is rejected or fails to save</dt>
+            <dd>When a request is rejected or saving is confirmed to have failed, keep the affected message visible with “Not saved” and offer Retry and Discard. A failed edit retains the attempted text as unsaved; a failed deletion leaves the message visible. Retry follows Retrying a failed change. Discard returns the display to the currently saved state, removing a new unsaved turn. Neither action overwrites the user’s current composer draft.</dd>
         </dl>
         <dl class="edge-case">
             <dt>A connection drops before a change’s save confirmation arrives</dt>
-            <dd>On reconnection, the addon checks the submission’s status through the Plugin. A saved change is reflected in the displayed transcript without duplication; a change still being processed remains pending; a confirmed unsaved change uses the save-failure treatment above. The addon does not automatically resend a submission whose outcome is uncertain.</dd>
+            <dd>On reconnection, the addon reloads the saved chat and checks pending changes using the confirmation rules under Saved-change event. Confirmed changes clear their pending display without being applied again. Unconfirmed changes remain pending and are not automatically resent. An uncertain outcome is not a save failure; “Not saved” requires an explicit failure.</dd>
         </dl>
-    </section>
-    <section id="dependencies">
-        <h2>Dependencies</h2>
-        <p>The Plugin specification must provide the following capabilities.</p>
-        <ul>
-            <li><strong>Authority assignment:</strong> identify browser connections by authenticated account, track which chat each connection has loaded, and supply each connection’s authority status. Assign the first owner connection loading a chat as that chat’s sole writing authority and explicitly notify it of the assignment. Connections belonging to guest accounts cannot acquire authority.</li>
-            <li><strong>Request routing:</strong> forward turns, edits, deletions, and generation requests from other connections viewing a chat to its authoritative owner connection, including the authenticated submitting account’s identifier.</li>
-            <li><strong>Committed-change notifications:</strong> notify the other connected accounts and tabs viewing a chat after a transcript change has been successfully saved. Receipt of a submission alone must not produce a committed-change notification.</li>
-            <li><strong>Submission reconciliation:</strong> correlate turn, edit, and deletion requests with their saved outcomes using the addon’s submission identifiers. Report whether a submission is saved, still processing, or confirmed unsaved after reconnection or authority transfer. Repeated submission of the same request must not apply the change more than once.</li>
-            <li><strong>Generation updates:</strong> supply the current generation status and notify connections viewing a chat when an AI turn starts and ends, whether or not streaming is enabled. Relay streamed AI output from the authoritative owner connection to the other connections viewing that chat, distinguishing provisional output from committed-change notifications.</li>
-            <li><strong>Authority transfer:</strong> when the authoritative connection disconnects or leaves the chat, automatically assign the longest-connected remaining owner connection with that chat loaded and notify it of its authority.</li>
-            <li><strong>Chat readiness:</strong> accept confirmation that an assigned owner connection has loaded the saved transcript and is ready to process requests. Inform connections viewing that chat when its writing connection becomes unavailable or ready.</li>
-        </ul>
     </section>
     <section id="testing-criteria">
         <h2>Testing Criteria</h2>
         <p>Tests run within the addon repository using fake Plugin responses, saved-file fixtures, and substitutes for SillyTavern’s interface, persistence, and generation. They require neither a live Plugin, a multi-account server, nor an AI service.</p>
+        <h3>Opening chats and connection lifecycle</h3>
         <ul class="criteria">
-            <li>Given a user opening a shared chat, the addon reports that chat to the Plugin and adopts the supplied connection authority status.</li>
+            <li>Given a user opening a shared chat, the addon joins through the Plugin’s browser library and adopts the returned <code>isOwner</code> and <code>ownerPresent</code> values.</li>
+            <li>Given <code>bus.status</code> for the open chat, the addon updates its authority and treats owner presence as readiness.</li>
             <li>Given a reconnecting user with an unsent composer draft, the addon reloads the saved chat file without replacing the draft.</li>
-            <li>Given a shared chat without a connected owner, its stored transcript remains readable and drafting remains available, while turn, edit, deletion, and generation requests are rejected.</li>
-            <li>Given separate owner connections assigned to different chats, activity in one chat does not change the other chat’s authority or displayed transcript.</li>
-            <li>Given a human turn submitted from a guest or additional owner connection, the addon forwards the request through the Plugin without independently saving the transcript or running generation.</li>
+            <li>Given a shared chat without a connected owner, its stored chat remains readable and drafting remains available, while turn, edit, and deletion requests are rejected and shared-chat generation is unavailable.</li>
+            <li>Given a cross-account chat load, the addon uses the Plugin’s chat HTTP route and native rendering without requesting a whole chat through the bus.</li>
+            <li>Given a guest loading an empty saved chat, the addon does not initialize or save the chat.</li>
+            <li>Given a selected owner loading or saving its chat, the addon uses SillyTavern’s native group-chat paths.</li>
+            <li>Given separate owner connections assigned to different chats, activity in one chat does not change the other chat’s authority or displayed chat.</li>
+        </ul>
+        <h3>Turn submission and saving</h3>
+        <ul class="criteria">
+            <li>Given a human turn submitted from a guest or additional owner connection, the addon sends <code>multiplayer.message.send</code> to <code>owner</code> with the body’s <code>message</code> and <code>iteration</code> fields, without independently saving the chat or running generation.</li>
+            <li>Given Send or an enabled native keyboard submission shortcut in a shared chat, the addon intercepts submission before the original handler runs; ordinary chats retain their original submission behavior.</li>
+            <li>Given input consumed by native command processing, the replacement submission handling does not also submit it as a player turn.</li>
+            <li>Given a local text turn from the selected owner, native user-message preparation, insertion, saving, and rendering run without entering generation.</li>
+            <li>Given a guest turn, native preparation helpers run in the guest’s context before the prepared message is captured and sent.</li>
+            <li>Given an accepted prepared guest turn, the owner preserves its text, timestamp, and other metadata without rerunning the owner’s send-time transformations or attachment preparation.</li>
+            <li>Given a malformed <code>multiplayer.message.send</code> body or message with invalid user-message flags, the owner leaves the chat unchanged.</li>
             <li>Given a newly submitted human turn awaiting confirmation, only its sending browser displays the pending turn, with a dashed border, “Saving…” label, and disabled message controls.</li>
-            <li>Given remote and local requests arriving at the authoritative owner, they enter the same ordered queue and the next transcript change is not applied before the preceding save completes.</li>
-            <li>Given confirmation that a pending turn was saved, the sending browser displays exactly one saved message with normal appearance and the controls permitted for that account.</li>
-            <li>Given a committed edit or deletion notification, a viewing addon updates or removes the targeted message without independently saving the transcript.</li>
-            <li>Given two distinct change requests and a retry of the first, the distinct requests carry different submission identifiers and the retry retains the first identifier.</li>
-            <li>Given a forwarded human turn containing native persona data and extension metadata, the saved message preserves those values and records the authenticated sender’s account rather than the processing owner or an account claimed in the message payload.</li>
+            <li>Given guest requests and local native actions arriving at the selected owner, they enter the same ordered queue and the next chat change or generation does not start before the preceding save completes.</li>
+            <li>Given a local action in the selected owner browser, it uses the native paths without sending an action request through the bus.</li>
+            <li>Given a successful native chat save, the selected owner sends <code>multiplayer.chat.saved</code> to <code>all</code> with an empty JSON object body; a failed save produces no such event.</li>
+            <li>Given a native save helper that returns normally after reporting a save error, the addon does not treat that return as save confirmation or publish a saved-change event.</li>
+            <li>Given a lost save response, the addon treats the outcome as uncertain rather than publishing a saved-change or confirmed-failure event.</li>
+            <li>Given the selected owner receiving its own <code>multiplayer.chat.saved</code> event, it does not reload the chat.</li>
+            <li>Given confirmation that a pending turn was saved, the sending browser displays exactly one saved message with normal appearance and the controls permitted for that browser.</li>
+            <li>Given <code>multiplayer.chat.saved</code>, another viewing browser refreshes the chat over HTTP and reflects the saved change without saving it or replacing the composer draft.</li>
+        </ul>
+        <h3>Message identity, attribution, and confirmation</h3>
+        <ul class="criteria">
+            <li>Given a new player message, its pending and saved versions retain the same UUID string in <code>extra.multiplayer.messageId</code>.</li>
+            <li>Given a new AI message, the selected owner assigns its identifier before the first preview or save, including when streaming is disabled.</li>
+            <li>Given a newly generated AI swipe, its <code>swipe_info</code> entry retains the message’s <code>extra.multiplayer.messageId</code>, and selecting that swipe preserves the message identifier.</li>
+            <li>Given a reloaded chat containing a pending new message’s identifier, the sender clears that message’s pending state.</li>
+            <li>Given a reloaded chat without a pending deletion’s message identifier, the sender clears that deletion’s pending state.</li>
+            <li>Given a reloaded player message whose current <code>mes</code> matches the pending edit’s attempted replacement text, the sender clears that edit’s pending state. A match only in historical <code>swipes</code> does not confirm the edit.</li>
+            <li>Given a reload that does not contain the pending change’s saved outcome, that change remains pending.</li>
+            <li>Given a forwarded human turn, the saved message records the bus-supplied sender’s authenticated handle in <code>extra.multiplayer.accountId</code>, rather than the processing owner or an account claimed in the body, while preserving other native fields and extension metadata.</li>
+            <li>Given a local human turn from the selected owner, <code>extra.multiplayer.accountId</code> records its authenticated account handle.</li>
+            <li>Given a human turn with a persona name and portrait, the saved message stores the name in <code>name</code> and a Plugin Persona image URL qualified by the sender’s account and image filename in <code>force_avatar</code>.</li>
             <li>Given a user changing their active persona between turns, the later turn uses the new persona while earlier messages retain their stored speaker data.</li>
+        </ul>
+        <h3>Message controls and permissions</h3>
+        <ul class="criteria">
             <li>Given a guest requesting an edit or single-message deletion of their own saved message, the authoritative addon applies the permitted change through the ordered save flow.</li>
-            <li>Given a guest viewing a message not attributed to their account, including an AI response, all message controls are hidden and direct edit or deletion requests are rejected without changing the transcript.</li>
-            <li>Given the owning account editing its own message or an AI response, the edit is permitted; a guest-authored message instead has its edit controls hidden and rejects the owner’s edit request.</li>
-            <li>Given the owning account deleting a message authored by any account, the deletion is permitted.</li>
-            <li>Given an owner bulk-deletion request selecting a message, that message and all subsequent messages are removed through the coordinated save flow.</li>
-            <li>Given a guest account, bulk-deletion controls are hidden and a direct bulk-deletion request is rejected without partially deleting the selected range.</li>
-            <li>Given an additional owner connection, owner permissions remain available while change and generation requests are forwarded rather than independently saved or generated.</li>
-            <li>Given the owning account activating Send with an empty composer, the authoritative addon requests native group generation using the owner’s group-selection rules and AI settings.</li>
-            <li>Given the owning account activating “Trigger a message from this character,” the authoritative addon requests a response from the selected group member.</li>
-            <li>Given a guest generation request, no AI generation is started.</li>
+            <li>Given an edit from a browser other than the selected owner, the addon sends <code>multiplayer.message.edit</code> to <code>owner</code> with the stable <code>messageId</code>, native-prepared replacement <code>text</code>, and <code>iteration</code>.</li>
+            <li>Given an accepted player-message edit event, the owner appends the prepared text to <code>swipes</code>, selects its index in <code>swipe_id</code>, and updates <code>mes</code> without repeating edit-time text processing.</li>
+            <li>Given a local owner edit, no <code>multiplayer.message.edit</code> event is sent.</li>
+            <li>Given a guest viewing a message not attributed to their account, including an AI response, all message controls are hidden and direct edit or deletion requests are rejected without changing the chat.</li>
+            <li>Given the selected owner editing its own account’s player message or an AI response locally, the edit is permitted; another account’s player message instead has its edit controls hidden and rejects the edit.</li>
+            <li>Given the selected owner deleting a message authored by any account locally, the deletion is permitted.</li>
+            <li>Given the selected owner using native bulk deletion locally, the selected message and all subsequent messages are removed through the coordinated save flow.</li>
+            <li>Given a deletion from a browser other than the selected owner, the addon sends <code>multiplayer.message.delete</code> to <code>owner</code> with the stable <code>messageId</code> and <code>iteration</code>.</li>
+            <li>Given an accepted deletion event, the selected owner deletes only the message resolved by its stable identifier.</li>
+            <li>Given a local owner deletion, no <code>multiplayer.message.delete</code> event is sent.</li>
+            <li>Given any browser other than the selected owner, bulk-deletion controls are hidden and a direct bulk-deletion request is rejected without partially deleting the selected range.</li>
+            <li>Given an additional owning-account connection, it has the same permissions as other guest browsers: edit or single-delete only its authenticated account’s player messages, with shared-chat generation disabled.</li>
+            <li>Given an AI-response edit request through the bus, including from the owning account, the selected owner rejects it without changing the message.</li>
+        </ul>
+        <h3>Generation controls and draft assistance</h3>
+        <ul class="criteria">
+            <li>Given the selected owner activating Send with an empty composer, native group generation uses the owner’s group-selection rules and AI settings without a bus request.</li>
+            <li>Given the selected owner activating “Trigger a message from this character,” native generation requests a response from the selected group member without a bus request.</li>
+            <li>Given any browser other than the selected owner, native shared-chat generation controls are disabled and attempts through those controls produce no shared-chat generation.</li>
+            <li>Given known addon controls that generate or revise shared conversation messages in a guest browser, the addon disables those controls while leaving private draft assistance available.</li>
+            <li>Given a guest using Guided Impersonate, its result remains in that browser’s composer without submitting a turn or saving the shared chat.</li>
+            <li>Given a guest submitting an assisted draft, it follows the same shared-turn flow as manually composed text.</li>
             <li>Given a human turn submitted through Send with text, the turn is processed without automatically starting AI generation.</li>
-            <li>Given successive streamed updates from the authoritative owner, the addon forwards the live output through the Plugin and receiving addons update one provisional AI message rather than appending a message per update.</li>
-            <li>Given save confirmation for a streamed AI message, its saved version replaces the provisional preview without duplication.</li>
-            <li>Given generation with streaming disabled, other viewing connections display the response only after its saved-message notification arrives.</li>
-            <li>Given an AI turn in progress, drafting remains available, turn submission and message editing and deletion are disabled, and directly submitted requests for those changes are rejected rather than queued.</li>
-            <li>Given the authoritative owner connection losing its Plugin connection, leaving the chat, or receiving authority revocation, its addon stops generation and further processing or saving of chat changes.</li>
-            <li>Given a user leaving a shared chat, the addon reports the departure to the Plugin.</li>
-            <li>Given authority assigned to a replacement owner connection, the addon loads the last saved transcript before reporting readiness or processing requests.</li>
-            <li>Given an authority handoff in progress, other viewing browsers retain their transcript and drafts while rejecting turn, edit, deletion, and generation requests until the replacement is ready.</li>
-            <li>Given two edits to the same message, both based on its original text, the later edit in the authoritative queue replaces the earlier saved edit.</li>
-            <li>Given an edit targeting an already-deleted message, the addon reports “This message has been deleted,” restores no message, and leaves any message now occupying the former transcript position unchanged.</li>
-            <li>Given a repeated deletion of an already-deleted message, the request is reported as completed without deleting another message.</li>
-            <li>Given the authoritative owner disconnecting during a streamed AI response, viewers discard the unsaved preview, retain the saved transcript, and see “AI generation interrupted,” without automatic generation by a replacement connection.</li>
+        </ul>
+        <h3>Generation previews and status</h3>
+        <ul class="criteria">
+            <li>Given a streamed AI response update, the selected owner sends <code>multiplayer.generation.preview</code> to <code>all</code> with <code>messageId</code>, <code>name</code>, <code>force_avatar</code>, and accumulated response <code>text</code>.</li>
+            <li>Given successive preview events with the same message identifier, other browsers replace the text of one provisional message rather than appending tokens or another message.</li>
+            <li>Given the selected owner receiving its own preview event, it leaves its native response display unchanged.</li>
+            <li>Given a model reasoning stream, it is not included in preview events.</li>
+            <li>Given a saved chat reload containing a streamed AI message’s identifier, its saved version replaces the provisional preview without duplication.</li>
+            <li>Given generation with streaming disabled, the owner sends no preview events and other viewing connections display the response after the saved-change event triggers a chat reload.</li>
+            <li>Given a shared AI turn in progress, drafting remains available, turn submission and message editing and deletion are disabled, and directly submitted requests for those changes are rejected rather than queued.</li>
+            <li>Given a shared AI turn starting, the selected owner sends <code>multiplayer.generation.status</code> to <code>all</code> with <code>generating: true</code>, including when streaming is disabled.</li>
+            <li>Given a shared AI turn finishing, stopping, or failing, the selected owner publishes <code>generating: false</code>.</li>
+            <li>Given a group turn producing multiple character responses, generation status remains true between those responses until the whole turn ends.</li>
+            <li>Given a non-owner browser joining or reconnecting with an owner present, it sends <code>multiplayer.generation.status_request</code> to <code>owner</code> with an empty JSON object body.</li>
+            <li>Given a generation-status request, the selected owner answers with its current status through <code>multiplayer.generation.status</code> to <code>all</code>.</li>
+            <li>Given a received generation status, the browser updates turn-submission, edit, and deletion availability without replacing the composer draft.</li>
+            <li>Given private draft assistance, no shared generation-status change is published for that operation.</li>
+        </ul>
+        <h3>Owner changes and reconnection</h3>
+        <ul class="criteria">
+            <li>Given the authoritative owner connection losing its Plugin connection, leaving the chat, or receiving authority revocation, its addon stops shared-chat generation and further processing or saving of chat changes.</li>
+            <li>Given a user leaving a shared chat, the addon invokes the Plugin browser library’s leave operation.</li>
+            <li>Given <code>bus.disconnected</code>, the addon disables shared-chat changes while retaining the displayed chat and composer draft, applying the existing interruption rules to owner-side work and unsaved previews.</li>
+            <li>Given reconnection, the addon relies on the library to rejoin, then adopts the supplied owner status and reloads the saved chat without replacing the draft.</li>
+            <li>Given authority assigned to a replacement owner connection, the addon reloads the chat through the native path.</li>
+            <li>Given an owner replacement, other viewing browsers retain their chat and drafts and use the Plugin’s owner-presence status.</li>
+            <li>Given a server-originated <code>multiplayer.owner.changed</code> event, viewers discard unsaved AI previews and clear the previous owner’s generation status, including when owner presence remains true through an immediate replacement.</li>
+            <li>Given an owner-change event with an owner remaining present, viewers request its current generation status through <code>multiplayer.generation.status_request</code>.</li>
+        </ul>
+        <h3>Revision history, deleted targets, and interrupted generation</h3>
+        <ul class="criteria">
+            <li>Given a player-message edit, whether local to the selected owner or requested by another browser, the addon appends and selects a new swipe while preserving the message identifier and earlier versions, including the original text.</li>
+            <li>Given two edits to the same player message, both based on its original text, both revisions remain as swipes and the later edit in the authoritative queue is selected.</li>
+            <li>Given a player message without swipe history, its first edit initializes the original text and metadata at index zero before appending the revision.</li>
+            <li>Given a player-message revision, its <code>swipe_info</code> entry occupies the same index as its text, retains the original <code>send_date</code>, and contains an independent copy of that version’s <code>extra</code> without adding AI generation timestamps.</li>
+            <li>Given a change to one revision’s metadata, other revisions’ metadata remains unchanged.</li>
+            <li>Given selection of a player-message swipe, its text and metadata are restored together without losing <code>extra.multiplayer.messageId</code> or <code>extra.multiplayer.accountId</code>.</li>
+            <li>Given a local selected-owner edit to an AI response, the addon retains native in-place editing rather than appending a revision swipe.</li>
+            <li>Given an edit targeting an already-deleted message, the addon reports “This message has been deleted,” restores no message, and leaves any message now occupying the former chat position unchanged.</li>
+            <li>Given a deletion event targeting an already-deleted message, the owner deletes nothing, performs no new save, and sends <code>multiplayer.chat.saved</code> directly to the requester so it can reload and confirm completion.</li>
+            <li>Given the authoritative owner disconnecting during a streamed AI response, viewers discard the unsaved preview, retain the saved chat, and see “AI generation interrupted,” without automatic generation by a replacement connection.</li>
+        </ul>
+        <h3>Failures, retries, and uncertain outcomes</h3>
+        <ul class="criteria">
             <li>Given a confirmed failure to save a new turn, edit, or deletion, the affected message remains visible with “Not saved” and Retry and Discard actions; an attempted edit retains its unsaved text.</li>
-            <li>Given Retry on a failed change, the addon resubmits that change without replacing the current composer draft.</li>
+            <li>Given a confirmed save failure for a remote message submission, the selected owner sends <code>multiplayer.message.send_failure</code> directly to that request’s <code>sender.connectionId</code> with <code>messageId</code>, <code>iteration</code>, and a human-readable <code>reason</code>.</li>
+            <li>Given a confirmed save failure for a remote edit, the selected owner sends <code>multiplayer.message.edit_failure</code> directly to that request’s <code>sender.connectionId</code> with <code>messageId</code>, attempted <code>text</code>, <code>iteration</code>, and a human-readable <code>reason</code>.</li>
+            <li>Given a confirmed save failure for a remote deletion, the selected owner sends <code>multiplayer.message.delete_failure</code> directly to that request’s <code>sender.connectionId</code> with <code>messageId</code>, <code>iteration</code>, and a human-readable <code>reason</code>.</li>
+            <li>Given a save-failure event matching a pending change by event name, message identifier, iteration, and replacement text for an edit, the requesting browser applies “Not saved” to that change.</li>
+            <li>Given a failure reply, it echoes the rejected or failed request’s <code>iteration</code>.</li>
+            <li>Given a failure event from an earlier iteration, the requesting browser does not mark its current attempt failed.</li>
+            <li>Given a save failure for a local owner action, the owner applies the failure treatment locally without sending itself a failure event.</li>
+            <li>Given an uncertain save outcome, the owner sends no save-failure event and the requesting browser retains the pending state.</li>
+            <li>Given a request rejected for insufficient permissions or because shared generation is in progress, the owner sends the action-specific failure event directly to the requester with an explanatory <code>reason</code> and leaves the saved chat unchanged.</li>
+            <li>Given an edit request targeting a deleted message, the owner replies with <code>multiplayer.message.edit_failure</code> and the reason “This message has been deleted.”</li>
+            <li>Given invalid request data with enough identifying information to match a pending action, the owner sends the action-specific failure event with an explanatory reason without changing the saved chat.</li>
+            <li>Given an action-failure event reporting rejection before saving, the requesting browser applies the same “Not saved” treatment as for a confirmed save failure.</li>
+            <li>Given a repeated deletion of an absent message, the owner does not report that absence as a deletion failure.</li>
+            <li>Given a new turn, edit, or deletion action, its body includes <code>iteration: 0</code>, even when its target was changed before.</li>
+            <li>Given Retry on a failed turn, edit, or deletion, the addon increments <code>iteration</code> and resends the same prepared action through its original event, retaining its message identifier and any prepared content without replacing the composer draft.</li>
+            <li>Given a retried action whose outcome is already confirmed in the saved chat, the owner does not apply it again and sends <code>multiplayer.chat.saved</code> directly to the retrying request’s <code>sender.connectionId</code>.</li>
+            <li>Given a retried action whose outcome is not confirmed in the saved chat, the owner processes it through the normal action flow.</li>
+            <li>Given Retry for a local owner action, the owner checks saved state without sending a bus request.</li>
+            <li>Given a confirmed save failure, the owner restores the saved chat before processing another change while retaining the attempted change separately for Retry or Discard.</li>
             <li>Given Discard on a failed change, the display returns to the currently saved state, removing a new unsaved turn or restoring the saved state of an edited or deletion-targeted message without replacing the composer draft.</li>
-            <li>Given reconnection after an unconfirmed change, the addon requests the submission’s status rather than automatically resending it.</li>
-            <li>Given a reconciliation response identifying the change as saved, the display reflects that saved outcome without duplicating the message or applying the change again.</li>
-            <li>Given a reconciliation response identifying the change as still processing, its pending state remains.</li>
-            <li>Given a reconciliation response identifying the change as confirmed unsaved, the save-failure controls appear.</li>
+            <li>Given reconnection after an unconfirmed change, the addon reloads the saved chat and checks for its saved outcome without sending a submission-status query or automatically resending the change.</li>
+            <li>Given a reconnect reload confirming a pending change under the saved-state confirmation rules, its pending display clears without applying the change again.</li>
+            <li>Given a reconnect reload that does not confirm a pending change, that change remains pending rather than being marked “Not saved.”</li>
         </ul>
     </section>
 </article>

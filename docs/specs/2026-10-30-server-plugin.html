@@ -91,7 +91,7 @@
         margin-bottom: 0.5rem;
     }
 
-    .spec h4 {
+    .spec h4, .spec h5 {
         font-size: 1rem;
         font-weight: 600;
         color: var(--spec-heading);
@@ -267,7 +267,7 @@
         <p>The multiplayer addon includes its server plugin and browser event-bus library as parts of one project. The server plugin provides two components:</p>
         <ul>
             <li><strong>HTTP router:</strong> exposes two resource route families. <code>/accounts</code> provides account discovery and authorized access to character cards, portraits, and lorebooks nested under their source account. <code>/chats</code> provides shared-group discovery, group details, chat listings, and chat transcripts. Resource identities include their source account to distinguish matching names or IDs.</li>
-            <li><strong>Event bus:</strong> carries messages from clients to the server, which routes them to other clients. Multiplayer features use this transport; message meaning and the actions triggered belong to its consumers.</li>
+            <li><strong>Event bus:</strong> carries messages from clients to the server, which routes them to clients or registered server-side handlers. Multiplayer features use this transport; message meaning and the actions triggered belong to its consumers.</li>
         </ul>
         <p>The session-owning browser remains responsible for AI generation and authoritative frontend workflows.</p>
     </section>
@@ -415,7 +415,7 @@
             </tbody>
         </table>
         <h3>Event bus</h3>
-        <p>The event bus uses WebSocket to carry client messages through the server to recipient clients.</p>
+        <p>The event bus uses WebSocket to carry client messages to the server for routing.</p>
         <h4>Attaching to the SillyTavern server</h4>
         <p>SillyTavern supplies the plugin with an HTTP router rather than the listening server. During the authenticated ticket request, the plugin obtains the underlying HTTP or HTTPS server from the request’s socket and attaches a WebSocket upgrade listener to that server. The bus shares SillyTavern’s existing listener and port, without a separate server or changes to SillyTavern core.</p>
         <p>Attach at most once per underlying server instance, before returning a connection ticket. Handle only upgrades for this plugin’s <code>/events</code> path; leave other upgrade paths to their existing handlers. Upgrade requests bypass the normal HTTP middleware, so connection authentication uses the ticket contract below. Plugin shutdown removes its upgrade listeners and closes its WebSocket connections.</p>
@@ -470,17 +470,55 @@ sequenceDiagram
         <p>On reconnection, the browser library joins the currently open chat, not a remembered previously joined chat; it joins none if no chat is open. It does not resend messages.</p>
         <h4>Browser library</h4>
         <p>The browser library ships with the multiplayer addon and exposes connect, send, handler registration and unsubscription, join, and leave operations. It is the foundation used by multiplayer itself and other consuming addons, rather than each implementing the WebSocket protocol separately. This specification defines the library and server contracts together; application workflows belong to the consuming addons.</p>
-        <p>Send, join, and leave return promises resolved by the matching server acknowledgment or rejected on failure. Join resolves with <code>isOwner</code> and <code>ownerPresent</code>; send and leave resolve without a value. Handler registration is synchronous and returns its unsubscribe function.</p>
+        <p>Send, join, and leave return promises resolved by the matching server acknowledgment or rejected on failure. Join resolves with <code>isOwner</code>, <code>ownerPresent</code>, and the current combined lorebook list; send and leave resolve without a value. Handler registration is synchronous and returns its unsubscribe function.</p>
         <h4>Library lifecycle events</h4>
         <p>Addons subscribe to library lifecycle events through the same handler-registration API. These reserved events cannot be sent through the application send operation. Their sender is <code>null</code>. Connection lifecycle events without chat context also have a <code>null</code> chat argument; <code>bus.status</code> carries the chat identity from its status envelope.</p>
+        <h5>Connected</h5>
         <table>
-            <thead><tr><th>Event</th><th>Meaning</th></tr></thead>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
             <tbody>
-                <tr><td><code>bus.connected</code></td><td>The WebSocket connection has opened. The body is <code>null</code>.</td></tr>
-                <tr><td><code>bus.disconnected</code></td><td>The WebSocket connection has closed or been lost. The body is <code>null</code>.</td></tr>
-                <tr><td><code>bus.status</code></td><td>The server supplied session status; the body contains <code>isOwner</code> and <code>ownerPresent</code>.</td></tr>
+                <tr><td><code>bus.connected</code></td><td>Browser library</td><td>Local registered handlers</td></tr>
             </tbody>
         </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td>Entire body</td><td><code>null</code>; no payload fields.</td></tr>
+            </tbody>
+        </table>
+        <p>Emitted when the WebSocket connection opens.</p>
+        <h5>Disconnected</h5>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>bus.disconnected</code></td><td>Browser library</td><td>Local registered handlers</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td>Entire body</td><td><code>null</code>; no payload fields.</td></tr>
+            </tbody>
+        </table>
+        <p>Emitted when the WebSocket connection closes or is lost.</p>
+        <h5>Session status</h5>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>bus.status</code></td><td>Browser library, from a server status envelope</td><td>Local registered handlers</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>isOwner</code></td><td>The session-ownership boolean defined under In-memory Chat.</td></tr>
+                <tr><td><code>ownerPresent</code></td><td>The owner-presence boolean defined under In-memory Chat.</td></tr>
+            </tbody>
+        </table>
+        <p>Emitted when the server supplies session status, subject to the stale-chat filtering described in Edge Cases.</p>
         <h4>In-memory Chat</h4>
         <p>The server maintains a Chat record distinct from the saved transcript:</p>
         <table>
@@ -490,12 +528,13 @@ sequenceDiagram
                 <tr><td>Connected clients</td><td>Connection identities and their authenticated accounts.</td></tr>
                 <tr><td>Session-owner connection</td><td>The connection targeted by <code>owner</code>, or none.</td></tr>
                 <tr><td>Connection ordering</td><td>The ordering needed to select a replacement session-owner connection.</td></tr>
+                <tr><td>Lorebook contributions</td><td>Each contributing account’s current list, used to supply the combined list defined under Lorebook list events.</td></tr>
             </tbody>
         </table>
         <p>Create the record when the first client joins. Remove it when the last client leaves or disconnects, without changing stored groups or transcripts. Guest connections can keep the record alive without a session-owner connection.</p>
         <p>The owning account is the account storing the group. The first connection from that account joining the chat becomes its session-owner connection. Additional connections from the owning account remain ordinary recipients. When the session-owner connection leaves or disconnects, select the longest-connected remaining connection from the owning account viewing that chat. Connections from guest accounts cannot become session owner.</p>
-        <p>The Chat record remains server-side. A successful join returns <code>isOwner</code> and <code>ownerPresent</code> booleans in its response <code>data</code>. The former identifies session ownership by this connection; the latter indicates that a session-owner connection exists. Subsequent changes use the status envelope defined in Wire format. Clients do not receive the Chat record.</p>
-        <p>Readiness messages are application events carried by the bus; the server’s routing status does not represent application readiness.</p>
+        <p>The Chat record remains server-side. A successful join returns <code>isOwner</code> and <code>ownerPresent</code> booleans alongside the current combined lorebook list in its response <code>data</code>. The former identifies session ownership by this connection; the latter indicates that a session-owner connection exists. Subsequent changes use the status envelope defined in Wire format. Clients do not receive the Chat record.</p>
+        <p>Owner presence is treated as readiness for play. No separate application-readiness signal is required. Messages arriving while a newly selected owner loads the chat may be lost; this is accepted behavior.</p>
         <div class="mermaid">
 stateDiagram-v2
     state "No Chat record" as Absent
@@ -517,15 +556,32 @@ stateDiagram-v2
         change stored data.
     end note
         </div>
+        <h4>Owner-change event</h4>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.owner.changed</code></td><td>Server</td><td>All connections remaining in the chat</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td>Entire body</td><td>An empty JSON object.</td></tr>
+            </tbody>
+        </table>
+        <p>The server publishes this event when the selected session-owner connection leaves or disconnects, whether another connection immediately replaces it or the chat becomes ownerless. Existing status messages supply ownership booleans. The event uses the normal chat identity and <code>sender: null</code>. Client attempts to publish it are rejected.</p>
         <h4>Connection context</h4>
         <p>A client explicitly joins a chat by supplying its owning account, group ID, and chat ID. The server checks that the authenticated account owns or participates in the group and that the chat belongs to that group. Each connection belongs to at most one chat. Join and leave operations take effect in arrival order per connection. Validate a join before changing the association: a failed join leaves the previous association intact, and a successful join replaces it. Joining the same chat again succeeds without changing owner selection. Leaving clears the association and succeeds even when no chat is joined.</p>
         <h4>Destinations</h4>
-        <p>The caller specifies one of two destinations, scoped to the shared chat:</p>
+        <p>The caller supplies a string destination, scoped to the shared chat:</p>
         <table>
             <thead><tr><th>Destination</th><th>Recipients</th></tr></thead>
             <tbody>
-                <tr><td>To owner</td><td>The chat’s session-owner connection, including itself when it is the sender.</td></tr>
-                <tr><td>To all</td><td>All connections viewing the chat, including the sending connection.</td></tr>
+                <tr><td><code>owner</code></td><td>The chat’s session-owner connection, including itself when it is the sender.</td></tr>
+                <tr><td><code>all</code></td><td>All connections viewing the chat, including the sending connection.</td></tr>
+                <tr><td><code>server</code></td><td>Registered server-side handlers for the event name, rather than browser connections.</td></tr>
+                <tr><td>Connection ID</td><td>Only the identified connection, which must be joined to the same chat. The <code>sender.connectionId</code> from a received event can be used to reply to its sending connection.</td></tr>
             </tbody>
         </table>
         <div class="mermaid">
@@ -535,32 +591,48 @@ flowchart TD
     Server --> Destination{"Destination"}
     Destination -->|owner| Owner["Selected session-owner connection<br/>May be the sending connection"]
     Destination -->|all| All["Every connection joined to this chat<br/>Including the sender"]
+    Destination -->|Connection ID| Direct["Only the identified connection<br/>Must be joined to the same chat"]
+    Destination -->|server| ServerHandlers["Server-side event dispatch"]
     Owner --> Library["Each receiving browser library"]
     All --> Library
+    Direct --> Library
     Library --> Registered{"Handlers registered<br/>for this event name?"}
+    ServerHandlers --> Registered
     Registered -->|No| Ignore["Ignore event"]
     Registered -->|Yes| Copies["Independent chat, sender, and body copies<br/>One per registered handler"]
     Copies --> Handlers["Invoke in registration order<br/>Do not await asynchronous completion<br/>Isolate handler failures"]
         </div>
         <h4>Message types and handlers</h4>
         <p>Any addon can send its own namespaced message types through the bus using the destinations above. Message types use an addon namespace followed by a period and an event name, such as <code>multiplayer.turn</code> or <code>rpg-companion.update</code>.</p>
-        <p>Receiving addons register client-side handlers for message types. The server routes messages without requiring a server-side handler or interpreting their meaning. A receiving client with no registered handler for a type ignores that message.</p>
+        <p>Consumers register handlers for namespaced message types on the receiving client or server. Client-directed messages do not require server-side handlers. Routing does not interpret message bodies; their meaning belongs to the receiving handlers. A recipient with no registered handler for a type ignores that message.</p>
         <p>Multiplayer messages use the same registration and delivery mechanism as messages from any other addon.</p>
         <h4>Registering a handler</h4>
-        <p>The client-facing registration operation accepts the event name and a handler, and returns an unsubscribe function that removes that registration. Multiple handlers may register for the same event name without replacing one another. Each handler receives three arguments: chat identity, sender, and body. Each handler receives its own independent deep copy of those values. Mutating that copy cannot affect another handler’s input.</p>
+        <p>Client-side and server-side registration use the same model: an event name and a handler, returning an unsubscribe function that removes that registration. Multiple handlers may register for the same event name without replacing one another. Each handler receives three arguments: chat identity, sender, and body. Each handler receives its own independent deep copy of those values. Mutating that copy cannot affect another handler’s input.</p>
         <h4>Sending a message</h4>
         <p>The client-facing send operation accepts three positional arguments:</p>
         <table>
             <thead><tr><th>Argument</th><th>Value</th></tr></thead>
             <tbody>
-                <tr><td>Destination</td><td><code>owner</code> or <code>all</code>.</td></tr>
+                <tr><td>Destination</td><td>A string selecting a recipient as defined in Destinations.</td></tr>
                 <tr><td>Event name</td><td>The namespaced message type.</td></tr>
                 <tr><td>Event body</td><td>The JSON payload delivered to handlers.</td></tr>
             </tbody>
         </table>
         <p>The chat is derived from the connection’s currently loaded chat, and the sender from authentication; neither is supplied as a send argument.</p>
+        <h4>Sending from the server</h4>
+        <p>The server-side send operation accepts four positional arguments:</p>
+        <table>
+            <thead><tr><th>Argument</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td>Chat</td><td>The chat identity object supplied to server-side handlers.</td></tr>
+                <tr><td>Destination</td><td>A string selecting a recipient as defined in Destinations.</td></tr>
+                <tr><td>Event name</td><td>The namespaced message type.</td></tr>
+                <tr><td>Event body</td><td>The JSON payload delivered to handlers.</td></tr>
+            </tbody>
+        </table>
+        <p>The explicit chat identity selects the routing context; the server has no implicitly joined chat. Server-side send returns a promise that resolves without a value when routing is accepted and rejects on failure, using the acceptance semantics defined under Delivery. The browser send operation remains unchanged.</p>
         <h4>Delivery</h4>
-        <p>The bus delivers live messages to currently connected recipients. It maintains no offline backlog and does not automatically replay messages after reconnection. Submission-status messages use the ordinary event transport rather than transport replay.</p>
+        <p>The bus delivers live messages to connected client recipients or registered server-side handlers. It maintains no offline backlog and does not automatically replay messages after reconnection.</p>
         <p>A successful send confirms only that the server accepted the message for routing, not that recipients handled it. Features requiring a result send a response event. Sending fails immediately rather than waiting or queueing when the client is disconnected, has no chat loaded, or targets <code>owner</code> without a connected session owner.</p>
         <p>Messages from each sender are delivered in send order. Listeners are invoked in registration order without waiting for asynchronous handlers to finish. Synchronous exceptions and asynchronous rejections are logged locally without preventing other handlers from receiving the event. Features requiring sequential completion manage their own queues.</p>
         <p>If the connection drops before a request’s acknowledgment arrives, the library rejects the outstanding request with an explicit unknown-outcome error. It does not claim that the request was undelivered and does not automatically retry it.</p>
@@ -587,11 +659,11 @@ flowchart TD
             </tbody>
         </table>
         <table>
-            <caption>Sender — server-supplied identity of the sending connection</caption>
+            <caption>Sender — server-supplied connection identity for client-originated events; <code>null</code> for server-originated events, which retain the normal chat identity</caption>
             <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
             <tbody>
                 <tr><td><code>accountId</code></td><td>The sender’s authenticated account.</td></tr>
-                <tr><td><code>connectionId</code></td><td>The sending connection’s identity, distinguishing connections belonging to the same account.</td></tr>
+                <tr><td><code>connectionId</code></td><td>The sending connection’s server-generated string identity, distinguishing connections belonging to the same account. Never equals the reserved destinations <code>owner</code>, <code>all</code>, or <code>server</code>.</td></tr>
             </tbody>
         </table>
         <h4>Error responses</h4>
@@ -604,15 +676,70 @@ flowchart TD
                 <tr><td><code>not_found</code></td><td>An authorized resource is missing.</td></tr>
                 <tr><td><code>not_joined</code></td><td>Sending without a joined chat.</td></tr>
                 <tr><td><code>owner_unavailable</code></td><td>Sending to <code>owner</code> when no session owner exists.</td></tr>
+                <tr><td><code>connection_unavailable</code></td><td>The directly addressed connection is unavailable in the selected chat.</td></tr>
                 <tr><td><code>internal_error</code></td><td>The server could not complete the request.</td></tr>
             </tbody>
         </table>
         <h4>Validation</h4>
         <p>The bus treats each message body as opaque JSON and forwards it unchanged, without body schemas or central body validation. Each receiving handler decides what body contents it accepts.</p>
         <p>The bus validates the routing envelope: a namespaced message type, one of the supported destinations, and a shared chat in which the sender participates. It supplies the authenticated sender identity rather than trusting an identity claimed in the body.</p>
+        <h4>Lorebook list events</h4>
+        <p>The server retains lorebook contributions in the in-memory Chat record, separately for each contributing account. The combined list deduplicates books by source account and filename. Successful joins receive this list, so new participants do not depend on earlier announcements.</p>
+        <p>Remove an account’s contribution when its last connection leaves or disconnects from that chat. Retain the contribution while another connection from that account remains joined. Changes caused by removal use the same combined-list notification defined below.</p>
+        <h5>Set lorebook contribution</h5>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.lorebooks.set</code></td><td>Joined client</td><td><code>server</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>lorebooks</code></td><td>An array of filename strings from the sender’s own account, using the filename format defined below.</td></tr>
+            </tbody>
+        </table>
+        <p>Replace the authenticated sending account’s complete contribution, without replacing other accounts’ contributions. The server derives both contribution ownership and source account from the authenticated sender, not the payload. An empty list withdraws that account’s contribution.</p>
+        <p>For the group’s owning account, accept contributions only from its current session-owner connection. Ignore contributions from its other connections without changing the retained list or broadcasting an update. Guest-account contributions are unaffected by this restriction.</p>
+        <h5>Lorebook list changed</h5>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.lorebooks.changed</code></td><td>Server</td><td><code>all</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>lorebooks</code></td><td>The complete combined array of book references defined below, rather than additions and removals.</td></tr>
+            </tbody>
+        </table>
+        <p>The server publishes this event after the combined list changes. Client attempts to publish it are rejected.</p>
+        <table>
+            <caption>Combined-list book reference</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>accountId</code></td><td>The book’s source account handle.</td></tr>
+                <tr><td><code>filename</code></td><td>The native lorebook filename, including <code>.json</code>. The contribution’s filename strings use the same format.</td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Successful join response data</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>isOwner</code>, <code>ownerPresent</code></td><td>The session-status booleans defined under In-memory Chat.</td></tr>
+                <tr><td><code>lorebooks</code></td><td>The current combined array of book references, using the same shape as the change event.</td></tr>
+            </tbody>
+        </table>
     </section>
     <section id="edge-cases">
         <h2>Edge Cases</h2>
+        <dl class="edge-case">
+            <dt>A directly addressed connection is unavailable</dt>
+            <dd>If the target connection no longer exists or is not joined to the same chat, reject the send immediately with <code>connection_unavailable</code>. Do not queue the message or redirect it to another connection from the same account.</dd>
+        </dl>
         <dl class="edge-case">
             <dt>Authentication is restored after a 403 stopped reconnection</dt>
             <dd>The library exposes an explicit connect operation that restarts connection attempts without requiring a page refresh. Calling it while already connected does nothing.</dd>
@@ -698,6 +825,8 @@ flowchart TD
             <li>Given the first owning-account connection joining a chat, it becomes session owner while subsequent owning-account connections remain ordinary recipients.</li>
             <li>Given only guest-account connections in a chat, no connection acquires session ownership and the Chat record remains present.</li>
             <li>Given a departing session owner and remaining owning-account connections, the longest-connected eligible connection is selected as replacement.</li>
+            <li>Given the selected session-owner connection leaving or disconnecting, the server publishes <code>multiplayer.owner.changed</code> to every remaining connection in that chat, whether an immediate replacement exists or the chat becomes ownerless. The event contains an empty JSON object body, the chat identity, and <code>sender: null</code>.</li>
+            <li>Given a client attempt to publish <code>multiplayer.owner.changed</code>, the attempt is rejected and no owner-change event is delivered.</li>
             <li>Given the last connection leaving or disconnecting, the server removes the Chat record without changing stored groups or transcripts.</li>
             <li>Given connections in distinct chats, joins, departures, and owner selection in one chat do not alter the other chat.</li>
             <li>Given a successful join, its result reports <code>isOwner</code> for that connection and <code>ownerPresent</code> for the session, without exposing the server’s Chat record.</li>
@@ -705,12 +834,35 @@ flowchart TD
             <li>Given a join superseded by a newer join or leave, its promise rejects as superseded and its late acknowledgment produces neither a current-status update nor <code>bus.status</code>.</li>
             <li>Given an event or status envelope for a previously open chat, the library drops it without invoking handlers or updating current session status.</li>
         </ul>
+        <h3>Lorebook list events</h3>
+        <ul class="criteria">
+            <li>Given existing contributions from two accounts and an allowed contributing connection, <code>multiplayer.lorebooks.set</code> replaces only the authenticated sending account’s contribution.</li>
+            <li>Given a lorebook contribution from a non-session-owning connection of the group’s owning account, the server ignores it without changing the retained list or broadcasting an update.</li>
+            <li>Given a lorebook contribution from the current session-owner connection, the owning account’s contribution is updated; a guest account need not hold session ownership to update its own contribution.</li>
+            <li>Given an empty contribution from an account, that account’s contribution is withdrawn without removing other accounts’ contributions.</li>
+            <li>Given a contributing account’s last connection leaving or disconnecting from the chat, its contribution is removed and the changed combined list is broadcast to remaining connections.</li>
+            <li>Given a departing connection with another connection from the same account still joined, that account’s contribution remains.</li>
+            <li>Given a changed combined list, the server broadcasts <code>multiplayer.lorebooks.changed</code> with the complete resulting list rather than a delta.</li>
+            <li>Given a new connection joining a Chat with retained contributions, its join result contains the current combined list in the same shape as the change event.</li>
+            <li>Given identically named lorebooks from different source accounts, the combined list preserves their distinct source-account and filename identities.</li>
+            <li>Given <code>multiplayer.lorebooks.set</code> with a <code>lorebooks</code> array of filename strings, the server uses the authenticated sender’s account as the source of every contributed book.</li>
+            <li>Given repeated contributions of the same source-account and filename pair, the combined list contains that book only once.</li>
+            <li>Given a server-published <code>multiplayer.lorebooks.changed</code> event, its envelope contains <code>sender: null</code> and the chat identity, and its body contains the complete <code>lorebooks</code> array of <code>accountId</code>/<code>filename</code> references.</li>
+            <li>Given a client attempt to publish <code>multiplayer.lorebooks.changed</code>, the attempt is rejected and no change notification is delivered.</li>
+        </ul>
         <h3>Routing and protocol</h3>
         <ul class="criteria">
             <li>Given a valid send to <code>owner</code>, only the selected session-owner connection receives the event, including when that connection is also the sender.</li>
             <li>Given a valid send to <code>all</code>, every connection joined to that chat receives the event, including the sender, and connections in other chats receive none.</li>
+            <li>Given a send addressed to a connection ID in the same chat, only that connection receives the event, not other connections belonging to the same account.</li>
+            <li>Given a direct destination identifying a missing connection or one in another chat, the send rejects immediately with <code>connection_unavailable</code>, without queueing or delivery to another connection.</li>
+            <li>Given server-generated connection IDs, none equals the reserved destinations <code>owner</code>, <code>all</code>, or <code>server</code>.</li>
+            <li>Given a send to <code>server</code> with registered server-side handlers, those handlers receive the chat identity, authenticated sender, and body without automatic delivery to browser connections.</li>
+            <li>Given a server-side send with chat identity, destination, event name, and body, routing uses that explicit chat and recipients receive <code>sender: null</code>.</li>
+            <li>Given a server-side send, its promise resolves without a value on routing acceptance without waiting for handler completion, or rejects on routing failure.</li>
+            <li>Given server-side handler registration, the same unsubscription, independent-copy, ordering, and failure-isolation rules apply as for client-side registration.</li>
             <li>Given a disconnected sender, an unjoined sender, or an <code>owner</code> destination without a session owner, sending fails rather than waiting or queueing.</li>
-            <li>Given an addon-defined namespaced event with a JSON body, the server routes it without requiring a registered server-side handler or body schema.</li>
+            <li>Given a client-directed addon-defined namespaced event with a JSON body, the server routes it without requiring a registered server-side handler or body schema.</li>
             <li>Given a body containing a claimed sender identity, the delivered envelope still identifies the authenticated account and actual sending connection while preserving the body unchanged.</li>
             <li>Given a routed event or status, its <code>chat</code> object contains the owning <code>accountId</code>, <code>groupId</code>, and <code>chatId</code>.</li>
             <li>Given multiple messages from one sender, each recipient receives them in that sender’s send order.</li>
@@ -722,7 +874,7 @@ flowchart TD
         </ul>
         <h3>Browser library</h3>
         <ul class="criteria">
-            <li>Given send, join, and leave operations, each returns a promise settled by its matching acknowledgment; join resolves with the owner-status booleans, while send and leave resolve without a value.</li>
+            <li>Given send, join, and leave operations, each returns a promise settled by its matching acknowledgment; join resolves with the owner-status booleans and current combined lorebook list, while send and leave resolve without a value.</li>
             <li>Given a failed request, its library promise rejects rather than resolving successfully.</li>
             <li>Given handler registration, it synchronously returns an unsubscribe function that removes that registration without replacing or removing other registrations.</li>
             <li>Given multiple handlers for one event name, all receive chat identity, sender, and body in that argument order, with independent deep copies per handler.</li>

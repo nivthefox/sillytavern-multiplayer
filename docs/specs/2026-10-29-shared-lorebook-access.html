@@ -5,56 +5,190 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shared Lorebook Access — Specification</title>
 <style>
-:root {
-    --spec-bg: #101010;
-    --spec-surface: #1a1a1a;
-    --spec-text: #d0d0d0;
-    --spec-text-muted: #707070;
-    --spec-heading: #f0f0f0;
-    --spec-accent: #0080C0;
-    --spec-accent-light: #0a1820;
-    --spec-border: #282828;
-    --spec-code-bg: #181818;
-    --spec-code-text: #0080C0;
-    --spec-edge-case-border: #0080C0;
-    --spec-prototype-bg: #0c0c0c;
-    --spec-prototype-border: #282828;
-    --spec-font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    --spec-font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
-    --spec-max-width: 52rem;
-    --spec-section-gap: 2.5rem;
-    --spec-mermaid-theme: dark;
-}
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--spec-font-body); line-height: 1.7; color: var(--spec-text); background: var(--spec-bg); }
-.spec { max-width: var(--spec-max-width); margin: 0 auto; padding: 2.5rem 1.5rem; }
-.spec > header { margin-bottom: var(--spec-section-gap); padding-bottom: 1.5rem; border-bottom: 2px solid var(--spec-accent); }
-.spec > header h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.025em; color: var(--spec-heading); margin-bottom: .25rem; }
-.spec > header time, .status { color: var(--spec-text-muted); font-size: .875rem; }
-.spec section { margin-bottom: var(--spec-section-gap); }
-.spec h2 { font-size: 1.25rem; font-weight: 600; color: var(--spec-accent); margin-bottom: 1rem; padding-bottom: .5rem; border-bottom: 1px solid var(--spec-border); }
-.spec h3 { font-size: 1.1rem; font-weight: 600; color: var(--spec-heading); margin-top: 1.5rem; margin-bottom: .5rem; }
-.spec a, .spec a:visited { color: var(--spec-accent); }
-.spec p { margin-bottom: .75rem; }
-.spec ul, .spec ol { margin-bottom: .75rem; padding-left: 1.5rem; }
-.spec li { margin-bottom: .35rem; }
-.spec strong { font-weight: 600; }
-.spec .edge-case { background: var(--spec-surface); border-left: 3px solid var(--spec-edge-case-border); padding: .75rem 1rem; margin-bottom: .75rem; border-radius: 0 .25rem .25rem 0; }
-.spec .edge-case dt { font-weight: 600; margin-bottom: .25rem; }
-.spec .edge-case dd { color: var(--spec-text-muted); }
-.spec .criteria li { margin-bottom: .5rem; list-style: none; padding-left: 1.75rem; position: relative; }
-.spec .criteria li::before { content: "\2610"; position: absolute; left: 0; }
-/* Natural-size diagrams may extend beyond the prose column, up to the viewport. */
-.spec .mermaid { width: max-content; max-width: calc(100vw - 2rem); position: relative; left: 50%; transform: translateX(-50%); overflow-x: auto; margin: 1.5rem 0; text-align: center; }
-.spec .placeholder { color: var(--spec-text-muted); font-style: italic; padding: 1rem; border: 1px dashed var(--spec-border); border-radius: .375rem; margin-bottom: .75rem; text-align: center; }
-@media print {
-    body { max-width: none; padding: 1rem; color: #000; background: #fff; }
-    .spec .mermaid { position: static; transform: none; width: auto; max-width: 100%; overflow: visible; }
-    .spec .mermaid svg { max-width: 100%; height: auto; }
-    .spec > header { border-bottom-color: #000; }
-    .spec h2 { color: #000; border-bottom-color: #ccc; }
-    .spec .edge-case { border-left-color: #000; background: #f9f9f9; }
-}
+    /* ── Theme ── */
+
+    :root {
+        --spec-bg: #101010;
+        --spec-surface: #1a1a1a;
+        --spec-text: #d0d0d0;
+        --spec-text-muted: #707070;
+        --spec-heading: #f0f0f0;
+        --spec-accent: #0080C0;
+        --spec-accent-light: #0a1820;
+        --spec-border: #282828;
+        --spec-code-bg: #181818;
+        --spec-code-text: #0080C0;
+        --spec-edge-case-border: #0080C0;
+        --spec-prototype-bg: #0c0c0c;
+        --spec-prototype-border: #282828;
+        --spec-font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        --spec-font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
+        --spec-max-width: 52rem;
+        --spec-section-gap: 2.5rem;
+        --spec-mermaid-theme: dark;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       Base styles — uses custom properties; do not hardcode colors
+       ══════════════════════════════════════════════════════════════ */
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+        font-family: var(--spec-font-body);
+        line-height: 1.7;
+        color: var(--spec-text);
+        background: var(--spec-bg);
+    }
+
+    .spec {
+        max-width: var(--spec-max-width);
+        margin: 0 auto;
+        padding: 2.5rem 1.5rem;
+    }
+
+    /* ── Header ── */
+
+    .spec > header {
+        margin-bottom: var(--spec-section-gap);
+        padding-bottom: 1.5rem;
+        border-bottom: 2px solid var(--spec-accent);
+    }
+
+    .spec > header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        color: var(--spec-heading);
+        margin-bottom: 0.25rem;
+    }
+
+    .spec > header time, .status {
+        color: var(--spec-text-muted);
+        font-size: 0.875rem;
+    }
+
+    /* ── Sections ── */
+
+    .spec section { margin-bottom: var(--spec-section-gap); }
+
+    .spec h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--spec-accent);
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--spec-border);
+    }
+
+    .spec h3 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--spec-heading);
+        margin-top: 1.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    /* ── Prose ── */
+
+    .spec a, .spec a:visited { color: var(--spec-accent); }
+    .spec p { margin-bottom: 0.75rem; }
+    .spec ul, .spec ol { margin-bottom: 0.75rem; padding-left: 1.5rem; }
+    .spec li { margin-bottom: 0.35rem; }
+    .spec strong { font-weight: 600; }
+
+    /* ── Code ── */
+
+    .spec code {
+        font-family: var(--spec-font-mono);
+        font-size: 0.875em;
+        background: var(--spec-code-bg);
+        color: var(--spec-code-text);
+        padding: 0.125rem 0.375rem;
+        border-radius: 0.25rem;
+    }
+
+    /* ── Mermaid diagrams ── */
+
+    /* Natural-size diagrams may extend beyond the prose column, up to the viewport. */
+    .spec .mermaid {
+        width: max-content;
+        max-width: calc(100vw - 2rem);
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
+        overflow-x: auto;
+        margin: 1.5rem 0;
+        text-align: center;
+    }
+
+    /* ── Tables ── */
+
+    .spec table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+
+    .spec th, .spec td {
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--spec-border);
+        text-align: left;
+    }
+
+    .spec th { background: var(--spec-surface); font-weight: 600; }
+
+    /* ── Edge cases ── */
+
+    .spec .edge-case {
+        background: var(--spec-surface);
+        border-left: 3px solid var(--spec-edge-case-border);
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.75rem;
+        border-radius: 0 0.25rem 0.25rem 0;
+    }
+
+    .spec .edge-case dt { font-weight: 600; margin-bottom: 0.25rem; }
+    .spec .edge-case dd { color: var(--spec-text-muted); }
+
+    /* ── Testing criteria ── */
+
+    .spec .criteria li {
+        margin-bottom: 0.5rem;
+        list-style: none;
+        padding-left: 1.75rem;
+        position: relative;
+    }
+
+    .spec .criteria li::before {
+        content: "\2610";
+        position: absolute;
+        left: 0;
+    }
+
+    /* ── Placeholders (incomplete sections in working drafts) ── */
+
+    .spec .placeholder {
+        color: var(--spec-text-muted);
+        font-style: italic;
+        padding: 1rem;
+        border: 1px dashed var(--spec-border);
+        border-radius: 0.375rem;
+        margin-bottom: 0.75rem;
+        text-align: center;
+    }
+
+    /* ── Print ── */
+
+    @media print {
+        body { max-width: none; padding: 1rem; color: #000; background: #fff; }
+        .spec .mermaid { position: static; transform: none; width: auto; max-width: 100%; overflow: visible; }
+        .spec .mermaid svg { max-width: 100%; height: auto; }
+        .spec > header { border-bottom-color: #000; }
+        .spec h2 { color: #000; border-bottom-color: #ccc; }
+        .spec .edge-case { border-left-color: #000; background: #f9f9f9; }
+    }
 </style>
 </head>
 <body>
@@ -71,31 +205,79 @@ body { font-family: var(--spec-font-body); line-height: 1.7; color: var(--spec-t
     <section id="solution">
         <h2>Solution</h2>
         <p>This work implements the addon entirely in the frontend/browser. It makes no server-side or Plugin changes.</p>
-        <p>The owner’s shared chat advertises its available lorebooks, and the guest’s SillyTavern frontend fetches them from the owner’s storage over HTTP. The addon integrates these shared books with SillyTavern’s normal lorebook access mechanisms for read-only frontend and extension use.</p>
+        <p>Participants’ frontends fetch the shared chat’s available lorebooks from each book’s source account over HTTP. The addon integrates these shared books with SillyTavern’s normal lorebook access mechanisms for read-only frontend and extension use.</p>
     </section>
     <section id="behavior">
         <h2>Behavior</h2>
+        <p>Every browser other than the selected owner follows the guest behavior in this specification, including additional owning-account tabs.</p>
         <h3>Available lorebooks</h3>
         <p>The shared chat’s available lorebooks are the union of the owner’s selections in “Active World(s) for all chats,” the chat-linked book, the owner’s active-persona book, and both the primary and additional lorebooks linked to every character in the group, including disabled members. Character-linked availability does not change with the character selected to generate a response. Sharing covers each book’s complete contents, including disabled entries and GM secrets, regardless of which entries activate for an AI response.</p>
         <p>Each guest’s active-persona lorebook is also shared with the owner and the other participants, with the guest’s account remaining its source. The owner’s frontend includes its entries in normal lorebook evaluation during AI generation, subject to native activation rules and token budgets. Shared books are distinguished by source account as well as book identity, so identical names in different accounts do not resolve to the same book.</p>
-        <p>The advertised list updates immediately when the owner or guests change relevant selections. Each change replaces the affected association; a book remains available if another association still includes it.</p>
-        <h3>Opening a chat while the owner is offline</h3>
-        <p>A guest opening the shared chat without a connected owner can access its character-linked lorebooks and chat-linked lorebook. Persona and global lorebooks are not made available on that offline opening.</p>
+        <p>The advertised list updates immediately when the owner or guests change relevant selections.</p>
+        <h3>Owner lorebook contribution</h3>
+        <p>The selected owner browser publishes the owner-side union defined under Available lorebooks through <code>multiplayer.lorebooks.set</code>, following the <a href="2026-10-30-server-plugin.html#behavior">Server Plugin’s Lorebook list events contract</a>. Its contribution uses the books’ native filenames.</p>
+        <p>It republishes whenever a relevant selection changes. Each publication rebuilds the union from the current associations, so removing one association retains a book still included by another.</p>
+        <h3>Guest lorebook contribution</h3>
+        <p>Each guest browser publishes its persona-book contribution through <code>multiplayer.lorebooks.set</code>, following the <a href="2026-10-30-server-plugin.html#behavior">Server Plugin’s Lorebook list events contract</a>. It supplies the active persona’s linked book filename, or an empty contribution when no book is linked.</p>
+        <p>When the active persona’s book selection changes, including through switching personas, changing the linked book, or clearing the link, the addon publishes the guest’s current contribution.</p>
+        <h3>Joining and reconnecting</h3>
+        <p>The addon uses the <a href="2026-10-30-server-plugin.html#behavior">Server Plugin’s browser-library lifecycle and reconnection contracts</a>. After each successful join or rejoin, it publishes its current contribution once local selections are loaded, following Owner lorebook contribution or Guest lorebook contribution. When <code>bus.status</code> assigns ownership to this browser, it publishes the owner’s contribution once local selections are loaded.</p>
+        <p>On <code>bus.disconnected</code>, the frontend retains its cached shared books. Other viewers also retain books already cached from a disconnected participant.</p>
+        <p>After rejoining, the addon refreshes the books in the current combined availability over HTTP, including cached books, to obtain changes saved while it was disconnected. Failed refreshes follow the existing load-error behavior under Edge Cases.</p>
+        <h3>Receiving shared lists</h3>
+        <p>The addon applies the lorebook list returned by each successful join and each <code>multiplayer.lorebooks.changed</code> update, following the <a href="2026-10-30-server-plugin.html#behavior">Server Plugin’s Lorebook list events contract</a>. Each supplied list replaces the previous Plugin-supplied list. Malformed updates leave that list unchanged.</p>
+        <p>Shared availability is the union of the Plugin-supplied list and the books found through Primary and chat-linked discovery below, deduplicated by source account and filename.</p>
+        <p>The addon fetches newly needed cross-account books through the <a href="2026-10-30-server-plugin.html#behavior">Server Plugin’s Lorebook route</a>, using each book’s source account and filename and the existing load-error behavior under Edge Cases. It retains cached contents for books still in the combined availability. After a list update, it stops exposing books omitted from both sources.</p>
+        <h3>Primary and chat-linked discovery</h3>
+        <p>The addon reads these links from the resources already loaded when opening the shared chat under <a href="2026-10-29-chat-ownership.html#behavior">Chat Ownership</a>:</p>
+        <ul>
+            <li><strong>Primary character books:</strong> read <code>data.extensions.world</code> from each group member’s character card, returned by <code>GET /accounts/&lt;accountID&gt;/characters/&lt;characterID&gt;/card</code>.</li>
+            <li><strong>Chat-linked book:</strong> read <code>chat_metadata.world_info</code> from the saved transcript’s metadata header, returned by <code>GET /chats/&lt;accountID&gt;/groups/&lt;groupID&gt;/chats/&lt;chatID&gt;</code>.</li>
+        </ul>
+        <p>For each linked book, append <code>.json</code> to its native book name and fetch its contents through <code>GET /accounts/&lt;accountID&gt;/lore/&lt;filename&gt;</code>. The account identifier in these requests is the group’s owning account. Requests follow the <a href="2026-10-30-server-plugin.html#behavior">Server Plugin’s Character card, Chat transcript, and Lorebook route contracts</a>.</p>
         <h3>Guest frontend access</h3>
-        <p>While the shared chat is open, SillyTavern and its extensions can resolve and read the advertised books as though they were local books, but the books do not appear in the guest’s lorebook selector or editor. Shared access provides a read mechanism only. Leaving the shared chat removes their availability from the guest’s frontend.</p>
-        <p>If a user disconnects, other users retain the already cached lorebooks.</p>
-        <h3>Refreshing shared books</h3>
-        <p>When a shared lorebook is successfully saved in its source account, viewing frontends refresh their cached contents from the saved book.</p>
+        <p>While the shared chat is open, SillyTavern and its extensions can resolve and read advertised books from other accounts as though they were local books. These books do not appear in the guest’s lorebook selector or editor, and shared access is read-only. Books in the guest’s own account keep their normal selector and editor access. Leaving the shared chat removes the cross-account availability provided by this feature.</p>
+        <h3>Saved-book event</h3>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.lorebook.saved</code></td><td>Saving browser’s addon</td><td><code>all</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>filename</code></td><td>A string identifying the native lorebook filename including <code>.json</code>.</td></tr>
+            </tbody>
+        </table>
+        <p>The saving browser’s addon publishes this event after a native save of a shared lorebook succeeds.</p>
+        <p>Save confirmation must establish that persistence succeeded. SillyTavern’s native lorebook-update event can fire after an unsuccessful HTTP response, and a debounced save helper can return before persistence. Neither is sufficient proof of a successful save. A failed save or an uncertain outcome, including a lost save response, produces no saved-book event.</p>
+        <p>The saving browser ignores its own event. Other viewing frontends identify the book using the bus-supplied <code>sender.accountId</code> and the body’s <code>filename</code>. Malformed notifications and notifications for books not currently shared in the open chat are ignored.</p>
+        <p>For a currently shared book, the receiving frontend fetches its saved contents through <code>GET /accounts/&lt;accountID&gt;/lore/&lt;filename&gt;</code>, using that source account and filename and following the <a href="2026-10-30-server-plugin.html#behavior">Server Plugin’s Lorebook route contract</a>. A successful read replaces the cached contents. Failed reads follow “A shared lorebook fails to load or refresh” under Edge Cases.</p>
+        <h3>Deleted-book event</h3>
+        <table>
+            <thead><tr><th>Event name</th><th>Origin</th><th>Destination</th></tr></thead>
+            <tbody>
+                <tr><td><code>multiplayer.lorebook.deleted</code></td><td>Deleting browser’s addon</td><td><code>all</code></td></tr>
+            </tbody>
+        </table>
+        <table>
+            <caption>Payload</caption>
+            <thead><tr><th>Field</th><th>Value</th></tr></thead>
+            <tbody>
+                <tr><td><code>filename</code></td><td>A string identifying the native lorebook filename including <code>.json</code>.</td></tr>
+            </tbody>
+        </table>
+        <p>The deleting browser’s addon publishes this event after receiving a successful response to the native deletion of a shared lorebook. A failed deletion or an uncertain outcome, including a lost deletion response, produces no deleted-book event.</p>
+        <p>The deleting browser applies deletion cleanup locally and ignores its own event. Other viewing frontends identify the book using the bus-supplied <code>sender.accountId</code> and the body’s <code>filename</code>. For a currently shared book, they remove it from the locally held Plugin-supplied list, primary/chat-linked discovery, and cached contents. Malformed notifications and notifications for books not currently shared in the open chat are ignored.</p>
+        <p>Each frontend in the source account also withdraws the deleted filename from its contribution and republishes the remaining contribution through <code>multiplayer.lorebooks.set</code>. It does this after a local confirmed deletion or a deletion notification for its own account.</p>
     </section>
     <section id="edge-cases">
         <h2>Edge Cases</h2>
         <dl class="edge-case">
-            <dt>A fetch finishes after the user switches chats</dt>
-            <dd>Discard the result so it cannot restore the previous chat’s shared lorebooks.</dd>
-        </dl>
-        <dl class="edge-case">
-            <dt>A shared lorebook is deleted from its source account</dt>
-            <dd>Remove the book from shared availability and clear its cached contents. Treat confirmed deletion separately from a load failure.</dd>
+            <dt>A fetch finishes after the chat or shared availability changes</dt>
+            <dd>Discard the result if it belongs to a previously open chat or the book is no longer shared, so it cannot restore that book’s availability.</dd>
         </dl>
         <dl class="edge-case">
             <dt>A shared lorebook fails to load or refresh</dt>
@@ -110,39 +292,74 @@ body { font-family: var(--spec-font-body); line-height: 1.7; color: var(--spec-t
             <dd>Within the shared chat, name-based access resolves to the shared book without modifying the guest’s local book. Leaving the shared chat restores normal local resolution.</dd>
         </dl>
     </section>
-    <section id="dependencies">
-        <h2>Dependencies</h2>
-        <p>The Plugin specification must provide the following capabilities.</p>
-        <ul>
-            <li><strong>Lorebook discovery:</strong> supply participating accounts with the shared chat’s advertised lorebook list according to Available lorebooks in Behavior, retaining the source account in each book’s identity.</li>
-            <li><strong>Shared-resource reads:</strong> provide authorized read-only cross-account HTTP access to fetch advertised books from their source accounts, including guest persona books.</li>
-            <li><strong>Offline discovery:</strong> make character-linked and chat-linked books discoverable and readable without a connected owner browser.</li>
-            <li><strong>Selection updates:</strong> distribute advertised-list changes to viewing frontends when participants change relevant selections.</li>
-            <li><strong>Saved-book notifications:</strong> notify viewing frontends after a shared lorebook is successfully saved so they can refresh its contents.</li>
-            <li><strong>Deleted-book notifications:</strong> notify viewing frontends when a shared lorebook is deleted from its source account, distinguishing confirmed deletion from a failed read.</li>
-        </ul>
-    </section>
     <section id="testing-criteria">
         <h2>Testing Criteria</h2>
         <p>Tests run within the addon repository using fake Plugin responses, lorebook fixtures, and substitutes for SillyTavern’s interface, lorebook access, and generation. They require neither a live Plugin, a multi-account server, nor an AI service.</p>
+        <h3>Lorebook contributions and selection changes</h3>
         <ul class="criteria">
-            <li>Given an owner with global, chat, persona, and character lorebook selections, the advertised list includes each selected book with its source account and book identity.</li>
+            <li>Given a selected owner with loaded global, chat, persona, and character lorebook selections, the addon publishes their native filenames as the owner’s contribution through <code>multiplayer.lorebooks.set</code>.</li>
+            <li>Given a browser receiving ownership through a join result or <code>bus.status</code>, it publishes the owner’s contribution after loading its local selections.</li>
+            <li>Given an additional owning-account tab, it publishes its persona-book contribution and follows the same guest behavior as every other non-owner browser.</li>
             <li>Given group characters with primary and additional books, including a disabled member, all those books are advertised regardless of the character selected for generation.</li>
-            <li>Given a guest with an active-persona lorebook, that book is advertised to the owner and other participants with the guest’s account as its source.</li>
-            <li>Given a participant without a persona lorebook selected, no persona-book association is advertised for that participant.</li>
+            <li>Given a guest with an active-persona lorebook, the addon supplies that book’s native filename as the guest’s contribution through <code>multiplayer.lorebooks.set</code>.</li>
+            <li>Given a guest without a persona lorebook selected, the addon supplies an empty contribution through <code>multiplayer.lorebooks.set</code>.</li>
+            <li>Given a guest switching personas, changing the active persona’s linked book, or clearing the link, the addon publishes the current persona-book contribution.</li>
+            <li>Given a guest’s successful join with its local selections loaded, the addon publishes its current persona-book contribution, including an empty contribution when no book is selected.</li>
+            <li>Given a selected owner or guest successfully rejoining, it republishes its current contribution once local selections are loaded.</li>
+            <li>Given a successful join before local selections are loaded, contribution publication waits until those selections are available.</li>
             <li>Given a shared book containing disabled entries and entries that did not activate in the latest response, reads return those entries along with the rest of the book.</li>
             <li>Given a fetched guest persona book during owner-side generation, its entries enter native lorebook evaluation and remain subject to activation rules and token budgets.</li>
-            <li>Given an owner or guest changing a relevant selection, the addon advertises the changed association without requiring the chat to be reopened.</li>
-            <li>Given a supplied advertised-list update, viewing frontends replace the affected association and retain a book still included by another association.</li>
-            <li>Given a guest opening a chat without a connected owner, character-linked primary and additional books and the chat-linked book are available, while persona and global books are not advertised.</li>
+            <li>Given an owner or guest changing a relevant selection, the addon republishes that browser’s current contribution without requiring the chat to be reopened.</li>
+            <li>Given an owner removing one association while another still includes the same book, the published contribution retains that book.</li>
+        </ul>
+        <h3>Shared lists and linked-book discovery</h3>
+        <ul class="criteria">
+            <li>Given <code>multiplayer.lorebooks.changed</code> adding a previously unavailable cross-account book, the frontend fetches the newly needed book through the Plugin Lorebook route using the supplied source account and filename.</li>
+            <li>Given a shared-list update retaining a cached book, the frontend retains that book’s cached contents.</li>
+            <li>Given a shared-list update omitting a book still included by primary or chat-linked discovery, the frontend retains its shared availability.</li>
+            <li>Given a shared-list update omitting a previously advertised book that is also absent from primary and chat-linked discovery, the frontend stops exposing that book through shared reads.</li>
+            <li>Given a malformed shared-list update, the frontend leaves its current advertised list unchanged.</li>
+            <li>Given a successful chat join, the addon combines the supplied lorebook list with primary character books from the loaded cards and the chat-linked book from the loaded transcript’s metadata header.</li>
+            <li>Given the same source account and filename in both the supplied list and primary or chat-linked discovery, the combined availability contains that book once.</li>
+            <li>Given a discovered primary character or chat-linked book, the addon appends <code>.json</code> to its native book name and fetches its contents through the owner-qualified Plugin Lorebook route.</li>
+        </ul>
+        <h3>Frontend access</h3>
+        <ul class="criteria">
             <li>Given a shared chat advertising a book, a frontend or extension read obtains that book through HTTP using its advertised identity rather than resolving it to an unrelated local book.</li>
-            <li>Given an open shared chat, advertised books are accessible through normal lorebook reads but absent from the guest’s lorebook selector and editor.</li>
+            <li>Given an open shared chat, advertised books from other accounts are accessible through normal lorebook reads but absent from the guest’s lorebook selector and editor.</li>
+            <li>Given a guest whose own persona book is advertised, that book retains its normal local selector and editor access.</li>
             <li>Given shared lorebook access, the addon exposes reads without introducing a shared-book save or change-request mechanism.</li>
             <li>Given a user leaving a shared chat, that chat’s shared books are no longer available through the frontend’s shared access.</li>
+        </ul>
+        <h3>Disconnection and reconnection</h3>
+        <ul class="criteria">
             <li>Given an owner or guest disconnecting, other viewing frontends retain their already cached lorebooks.</li>
-            <li>Given a successful-save notification for a cached shared book, the viewing frontend fetches the saved contents and replaces its cached version.</li>
+            <li>Given <code>bus.disconnected</code> in a frontend with cached shared books, those books remain available in that frontend.</li>
+            <li>Given a successful rejoin with a cached book still in the combined availability, the frontend requests its saved contents over HTTP and replaces the cached contents after a successful read.</li>
+        </ul>
+        <h3>Saved-book notifications and refreshes</h3>
+        <ul class="criteria">
+            <li>Given a confirmed successful native save of a shared lorebook, the saving browser sends <code>multiplayer.lorebook.saved</code> to <code>all</code> with a JSON object containing its native <code>filename</code>, including <code>.json</code>.</li>
+            <li>Given a native lorebook-update event or a completed save helper without confirmation that persistence succeeded, the addon sends no saved-book event.</li>
+            <li>Given a failed save or a lost save response, the addon sends no saved-book event.</li>
+            <li>Given the saving browser receiving its own <code>multiplayer.lorebook.saved</code> event, it does not fetch the book again.</li>
+            <li>Given <code>multiplayer.lorebook.saved</code> for a currently shared book and a successful HTTP read, another viewing frontend fetches the book through the Plugin Lorebook route using <code>sender.accountId</code> and <code>filename</code> and replaces its cached contents with the response.</li>
+            <li>Given a malformed saved-book notification or one identifying a book not currently shared in the open chat, the frontend ignores it without fetching a book or changing shared availability.</li>
             <li>Given a fetch completing after the user switches chats, its result is discarded without restoring the previous chat’s shared books.</li>
-            <li>Given a confirmed deletion notification for a shared book, the viewing frontend removes its availability and cached contents.</li>
+            <li>Given a fetch completing after its book is removed from shared availability, its result is discarded without restoring the book.</li>
+        </ul>
+        <h3>Deleted-book notifications and cleanup</h3>
+        <ul class="criteria">
+            <li>Given a successful native deletion response for a shared lorebook, the deleting browser sends <code>multiplayer.lorebook.deleted</code> to <code>all</code> with a JSON object containing its native <code>filename</code>, including <code>.json</code>.</li>
+            <li>Given a failed deletion or a lost deletion response, the addon sends no deleted-book event.</li>
+            <li>Given the deleting browser receiving its own <code>multiplayer.lorebook.deleted</code> event, it ignores the notification.</li>
+            <li>Given <code>multiplayer.lorebook.deleted</code> for a currently shared book, another viewing frontend removes the book identified by <code>sender.accountId</code> and <code>filename</code> from its locally held Plugin-supplied list, primary/chat-linked discovery, and cached contents.</li>
+            <li>Given a local confirmed deletion of a shared book, the frontend republishes its remaining contribution through <code>multiplayer.lorebooks.set</code> without the deleted filename.</li>
+            <li>Given a frontend receiving a deletion notification for a currently shared book in its own account, it republishes its remaining contribution without the deleted filename.</li>
+            <li>Given a malformed deleted-book notification or one identifying a book not currently shared in the open chat, the frontend ignores it without changing shared availability or cached contents.</li>
+        </ul>
+        <h3>Load errors and name resolution</h3>
+        <ul class="criteria">
             <li>Given a failed shared-book refresh with an existing cached version, the frontend reports a load error and retains that version.</li>
             <li>Given a failed shared-book read without cached contents, the frontend reports a load error and leaves the book unavailable rather than returning an empty book.</li>
             <li>Given different source accounts advertising books with the same name, qualified reads return the corresponding books and a name-only lookup reports ambiguity.</li>

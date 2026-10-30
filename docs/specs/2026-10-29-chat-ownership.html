@@ -259,27 +259,58 @@
 
     <section id="problem">
         <h2>Problem</h2>
-        <p>A scene owner needs to create a persistent SillyTavern Character Group Chat containing multiple Account cards representing participating server accounts and multiple Character cards representing scene characters, then add a chat to that group and reopen its transcript.</p>
+        <p>A scene owner needs to create a persistent SillyTavern Character Group Chat containing multiple Account cards representing participating server accounts and multiple Character cards representing scene characters, then add a chat to that group and reopen it.</p>
         <p>Selected guests need to discover the shared group in their normal character listing and open and read its chats, including while the owner is offline. This establishes a readable shared scene before participants begin playing together.</p>
         <p>SillyTavern currently treats group members as local characters and serves groups, chats, and character portraits from the logged-in account’s storage. It does not provide the cross-account discovery and authorized reading needed for this experience.</p>
     </section>
     <section id="solution">
         <h2>Solution</h2>
         <p>This work implements the addon entirely in the frontend/browser. It makes no server-side or Plugin changes.</p>
-        <p>The creating account owns the group. Its stored group and transcripts are the authoritative source; guests access that source rather than independent copies.</p>
-        <p>The addon extends SillyTavern’s existing group creation and chat interface. Character membership retains its native representation. Account membership uses account identifiers, with each Account card displaying the account’s name and account avatar. Ownership and account membership are stored in the group’s JSON record alongside native character membership.</p>
-        <p>The addon presents shared groups in each participant’s normal character listing, identifies their owner, and displays their chats in SillyTavern’s familiar chat interface. It loads the group’s character cards and portraits with the transcript so guests can read the scene in context.</p>
+        <p>The creating account owns the group. Its stored group and chats are the authoritative source; guests access that source rather than independent copies.</p>
+        <p>The addon extends SillyTavern’s existing group creation and chat interface. Character membership retains its native representation. Account membership uses account identifiers, with each Account card displaying the account’s name and account avatar. Ownership and account membership are stored in the group’s JSON record alongside native character membership. The group’s <code>multiplayer.owner</code> field contains the creator’s account handle, and <code>multiplayer.accounts</code> contains an array of the selected guest account handles. With no guests selected, the array is empty.</p>
+        <p>The addon presents shared groups in each participant’s normal character listing, identifies their owner, and displays their chats in SillyTavern’s familiar chat interface. It loads the group’s character cards and portraits with the chat so guests can read the scene in context.</p>
     </section>
     <section id="behavior">
         <h2>Behavior</h2>
         <h3>Creating a group</h3>
         <p>The existing Create New Chat Group screen shows the creating account automatically as owner. Alongside Add Members, an Add Other Accounts section lets the creator select participating accounts. The creator does not select themselves.</p>
         <p>Creation requires at least one Character card. Additional accounts are optional.</p>
+        <p>The addon creates the group through SillyTavern’s native group-creation route. It then adds <code>multiplayer.owner</code> and <code>multiplayer.accounts</code> to the returned record and saves the complete record through the native group-edit route. Later group saves preserve these fields.</p>
+        <p>Creation is reported as complete after both saves succeed. If the second save fails, the addon reports the error. The native group already exists; retrying saves its ownership and membership without creating another group.</p>
         <h3>Account discoverability</h3>
         <p>Enabled accounts are eligible for selection by default, including when discreet login is enabled. Each account has an explicit opt-out setting, “Allow others to add me to shared groups,” enabled by default. Turning it off hides that account from future participant listings; existing memberships remain unchanged. Accounts already visible in an open selection list remain selectable and can be added.</p>
+        <p>The addon loads account choices through the <a href="2026-10-30-server-plugin.html#behavior">Server Plugin’s Account listing route</a>, <code>GET /accounts</code>, following that route’s response and error contract. It removes the creating account from the choices and uses the returned account records to display the remaining Account cards.</p>
+        <p>The addon stores “Allow others to add me to shared groups” in the current account’s native extension settings and saves changes through SillyTavern’s normal settings-saving path. An absent preference displays as enabled. Changing the preference does not refresh an already-displayed account selection list or change existing memberships.</p>
         <h3>Creating and reading chats</h3>
-        <p>Adding a chat uses SillyTavern’s native New Chat behavior. Existing native transcript import behavior remains unchanged.</p>
-        <p>Guests can select and open a shared group’s chats and read their transcripts. For guest interactions beyond discovery, opening, and reading, broken behavior and unsecured changes—including changes to the owner’s group or transcripts—are acceptable in this milestone. Implementers must not hide controls, prevent writes, or add permission enforcement for those interactions.</p>
+        <p>Adding a chat uses SillyTavern’s native New Chat behavior. Existing native chat import behavior remains unchanged.</p>
+        <p>Guests can select, open, and read a shared group’s chats. For guest interactions beyond discovery, opening, and reading, broken behavior and unsecured changes—including changes to the owner’s group or chats—are acceptable in this milestone. Implementers must not hide controls, prevent writes, or add permission enforcement for those interactions.</p>
+        <p>For a guest opening a shared group, the addon uses these <a href="2026-10-30-server-plugin.html#behavior">Server Plugin routes</a>, following their response and error contracts:</p>
+        <table>
+            <thead><tr><th>Resource</th><th>GET route</th></tr></thead>
+            <tbody>
+                <tr><td>Group details</td><td><code>/chats/&lt;accountID&gt;/groups/&lt;groupID&gt;</code></td></tr>
+                <tr><td>Chat listing</td><td><code>/chats/&lt;accountID&gt;/groups/&lt;groupID&gt;/chats</code></td></tr>
+                <tr><td>Selected chat</td><td><code>/chats/&lt;accountID&gt;/groups/&lt;groupID&gt;/chats/&lt;chatID&gt;</code></td></tr>
+            </tbody>
+        </table>
+        <p>The account identifier is the group’s owning account. The group and chat identifiers come from its saved record.</p>
+        <p>The addon displays the returned chat summaries through the native chat-selection interface. It loads the selected chat into the native chat display, treating the metadata header as chat metadata rather than a message and preserving message order and fields.</p>
+        <p>An empty chat response displays an empty chat. Failed reads follow “Shared chat fails to load.”</p>
+        <h3>Shared-group discovery</h3>
+        <p>The addon loads shared groups through the <a href="2026-10-30-server-plugin.html#behavior">Server Plugin’s <code>GET /chats</code> route</a>, following its response and error contract. It merges the returned groups into the normal character listing, identifying each group by its owning account handle and native group ID. A group already present in the native listing appears only once; matching group IDs from different owners remain separate.</p>
+        <p>Ownership labels use the returned <code>owner.name</code>. The addon compares <code>owner.id</code> with the current account’s handle to determine whether to display the guest ownership indicator.</p>
+        <h3>Character cards and portraits</h3>
+        <p>The addon loads the shared group’s character cards and portraits through the <a href="2026-10-30-server-plugin.html#behavior">Server Plugin’s Character card and Character image routes</a>:</p>
+        <table>
+            <thead><tr><th>Resource</th><th>GET route</th></tr></thead>
+            <tbody>
+                <tr><td>Character card</td><td><code>/accounts/&lt;accountID&gt;/characters/&lt;characterID&gt;/card</code></td></tr>
+                <tr><td>Character portrait</td><td><code>/accounts/&lt;accountID&gt;/characters/&lt;characterID&gt;</code></td></tr>
+            </tbody>
+        </table>
+        <p>The account identifier is the group’s owner. Character identifiers are the native filenames in the group’s character membership. Requests follow the Plugin’s route contracts.</p>
+        <p>The addon makes these cards available to the native group display, distinguishing characters by source account and filename. A guest’s local character with the same filename does not replace the owner’s character.</p>
+        <p>Group portrait collages use the shared character images. For character messages, the addon uses the saved <code>original_avatar</code> filename to resolve the portrait from the owner’s account rather than loading an owner-local thumbnail URL against the guest’s account.</p>
         <h3>Ownership indicators</h3>
         <p>A group owned by another account displays “Owned by &lt;account name&gt;” in its card. In grid view, a small badge overlays its circular portrait before the card is opened; the badge’s tooltip carries the same ownership label. The viewer’s own groups retain their normal icons.</p>
     </section>
@@ -291,18 +322,8 @@
         </dl>
         <dl class="edge-case">
             <dt>Portrait is missing or fails to load</dt>
-            <dd>Use SillyTavern’s default avatar and continue displaying the group or transcript.</dd>
+            <dd>Use SillyTavern’s default avatar and continue displaying the group or chat.</dd>
         </dl>
-    </section>
-    <section id="dependencies">
-        <h2>Dependencies</h2>
-        <p>The Plugin specification must provide the following capabilities.</p>
-        <ul>
-            <li><strong>Account selection:</strong> supply authenticated users with eligible account identifiers, display names, and account avatars according to Account discoverability. Persist each account’s opt-out preference. Accept selections from an already displayed list even if an account subsequently opts out.</li>
-            <li><strong>Group persistence:</strong> accept and retain ownership and account membership when creating and saving group records.</li>
-            <li><strong>Shared-group discovery:</strong> supply the current account’s participating groups and their owner identities.</li>
-            <li><strong>Shared-resource reads:</strong> supply group details, chat listings, transcripts, and the character cards and portraits needed to display the owner’s scene from another participating account. These reads must work without the owner’s browser being connected.</li>
-        </ul>
     </section>
     <section id="testing-criteria">
         <h2>Testing Criteria</h2>
@@ -310,21 +331,31 @@
         <ul class="criteria">
             <li>Given a logged-in account opening group creation, that account appears automatically as owner alongside character and other-account selection controls.</li>
             <li>Given a creation form without Character cards, submission does not create a group.</li>
-            <li>Given a creation form with a Character card and no additional accounts, submission creates an owner-only group.</li>
+            <li>Given a creation form with a Character card and no additional accounts, submission creates an owner-only group with an empty <code>multiplayer.accounts</code> array.</li>
             <li>Given multiple selected Character and Account cards, the saved group retains the creator’s ownership and both sets of membership after reload.</li>
+            <li>Given successful native group creation, the addon saves the returned record with <code>multiplayer.owner</code> and <code>multiplayer.accounts</code> through native group editing before reporting completion.</li>
+            <li>Given a failed second save, the addon reports the error and retries against the same group without creating another.</li>
             <li>Given eligible account records, Account cards display the supplied names and account avatars.</li>
+            <li>Given a <code>GET /accounts</code> response containing the creator, that account is excluded from the selectable Account cards.</li>
             <li>Given an account with no saved discoverability preference, “Allow others to add me to shared groups” is on by default.</li>
-            <li>Given an account disabling discoverability, the addon persists the preference without requesting removal of existing memberships.</li>
+            <li>Given a discoverability change, the addon saves it through native extension settings without changing existing memberships.</li>
             <li>Given an eligible-account response while discreet login is enabled, the addon displays the supplied accounts for selection.</li>
             <li>Given an account opting out after its card was displayed, the existing selection remains available for submission without a new eligibility check.</li>
             <li>Given an existing group, adding a chat invokes native New Chat behavior and makes the resulting chat selectable within that group.</li>
             <li>Given shared groups returned for the current account, they appear in the normal character listing.</li>
+            <li>Given the same owned group in native and Plugin listings, it appears once; matching group IDs from different owners remain separate.</li>
             <li>Given a group owned by another account, its card identifies the owner and its grid portrait carries the ownership badge and tooltip.</li>
             <li>Given a group owned by the current account, its grid portrait has no guest ownership badge.</li>
-            <li>Given an owner or guest selecting a stored chat, the supplied transcript renders in order with its speaker identities and available portraits.</li>
+            <li>Given an owner or guest selecting a stored chat, the supplied chat renders in order with its speaker identities and available portraits.</li>
+            <li>Given a guest opening a shared group, group details, chat summaries, and the selected chat are fetched through their owner-qualified Plugin routes.</li>
+            <li>Given a loaded chat with a metadata header, the header becomes chat metadata rather than a displayed message, while message order and fields are preserved.</li>
+            <li>Given an empty array or a metadata-only chat, the display contains no messages.</li>
+            <li>Given matching character filenames in the owner’s and guest’s accounts, the shared group uses the owner’s card and image routes.</li>
+            <li>Given a shared group portrait collage, its images come from the owner’s characters.</li>
+            <li>Given a character message with <code>original_avatar</code>, its portrait resolves through the owner’s Character image route.</li>
             <li>Given shared resources available while the owner’s browser is disconnected, a guest can list and open the group’s chats without contacting that browser.</li>
             <li>Given a failed shared-chat read, the addon displays a load error and issues no request to initialize or overwrite that chat.</li>
-            <li>Given a missing or failed portrait, the default avatar appears and the group or transcript remains displayed.</li>
+            <li>Given a missing or failed portrait, the default avatar appears and the group or chat remains displayed.</li>
         </ul>
     </section>
 </article>

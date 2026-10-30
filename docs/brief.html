@@ -5,17 +5,90 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SillyTavern Multiplayer — Concept Brief</title>
 <style>
-:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #151820; color: #e4e7ee; }
-body { max-width: 760px; margin: 48px auto; padding: 0 24px 48px; line-height: 1.65; }
-h1, h2 { line-height: 1.25; } h1 { font-size: 2rem; } h2 { margin-top: 2rem; font-size: 1.25rem; color: #b8ceff; }
-p, li { max-width: 70ch; } li { margin: .45rem 0; } .status { color: #aab3c5; font-size: .9rem; }
+    :root {
+        --spec-bg: #101010;
+        --spec-text: #d0d0d0;
+        --spec-text-muted: #707070;
+        --spec-heading: #f0f0f0;
+        --spec-accent: #0080C0;
+        --spec-border: #282828;
+        --spec-font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        --spec-max-width: 52rem;
+        --spec-section-gap: 2.5rem;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+        font-family: var(--spec-font-body);
+        line-height: 1.7;
+        color: var(--spec-text);
+        background: var(--spec-bg);
+    }
+
+    .spec {
+        max-width: var(--spec-max-width);
+        margin: 0 auto;
+        padding: 2.5rem 1.5rem;
+    }
+
+    .spec > header {
+        margin-bottom: var(--spec-section-gap);
+        padding-bottom: 1.5rem;
+        border-bottom: 2px solid var(--spec-accent);
+    }
+
+    .spec > header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        color: var(--spec-heading);
+        margin-bottom: 0.25rem;
+    }
+
+    .spec .status { color: var(--spec-text-muted); font-size: 0.875rem; }
+
+    .spec h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--spec-accent);
+        margin-top: var(--spec-section-gap);
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--spec-border);
+    }
+
+    .spec h3 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--spec-heading);
+        margin-top: 1.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .spec a, .spec a:visited { color: var(--spec-accent); }
+    .spec p { margin-bottom: 0.75rem; }
+    .spec ul, .spec ol { margin-bottom: 0.75rem; padding-left: 1.5rem; }
+    .spec li { margin-bottom: 0.35rem; }
+    .spec strong { font-weight: 600; }
+
+    @media print {
+        body { max-width: none; padding: 1rem; color: #000; background: #fff; }
+        .spec > header { border-bottom-color: #000; }
+        .spec h2 { color: #000; border-bottom-color: #ccc; }
+    }
 </style>
 </head>
 <body>
+<article class="spec">
+<header>
 <h1>SillyTavern Multiplayer</h1>
 <p class="status">Working concept brief · October 29, 2026</p>
+</header>
 <h2>Purpose</h2>
 <p>Multiple humans play distinct characters in a shared scene with an AI GM. The motivating use is a couple playing Duo Fate together, with support for a variable number of participants.</p>
+<h2>Scope and engineering expectations</h2>
+<p>This project is for a small, trusted group, with an expected userbase of roughly five people. It is not an enterprise system. Favor straightforward behavior and implementation over elaborate resilience mechanisms or protection against malicious participants. Rare disruptions, including lost messages during owner handoff, are acceptable tradeoffs. Robustness should be proportional to this audience and use case.</p>
 <h2>Three core pieces</h2>
 <ol>
 <li><strong>Communication bus.</strong> Moves messages between participants through the SillyTavern server. Integration code and extensions can send messages and attach event listeners that take actions when messages arrive.</li>
@@ -34,12 +107,14 @@ p, li { max-width: 70ch; } li { margin: .45rem 0; } .status { color: #aab3c5; fo
 <h3>Plugin</h3>
 <ul>
 <li><strong>Communication bus:</strong> participant addressing, message delivery, and extension listeners.</li>
+<li><strong>HTTP resource access:</strong> account discovery and authorized reads of shared groups, chats, character cards, portraits, and lorebooks.</li>
 </ul>
 <h3>Multiplayer addon</h3>
 <ul>
-<li><strong>Shared conversation:</strong> synchronized history, player identities, and separation of human turns from AI generation.</li>
-<li><strong>Chat ownership:</strong> adding participant accounts through group creation, generation authority, session recovery, shared access to group cards and portraits, and making each guest’s active persona available to the owner for inclusion in the AI context.</li>
+<li><strong>Shared conversation:</strong> synchronized history, player identities, separation of human turns from AI generation, generation authority, and session recovery.</li>
+<li><strong>Chat ownership:</strong> adding participant accounts through group creation and shared access to group cards and portraits.</li>
 <li><strong>Shared lorebook access:</strong> a separate specification for the resource-sharing responsibilities within chat ownership.</li>
 </ul>
+</article>
 </body>
 </html>
