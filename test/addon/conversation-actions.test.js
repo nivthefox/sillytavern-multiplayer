@@ -190,6 +190,13 @@ test('confirmed failure is reported even when restoring disk state fails, and la
     assert.equal(h.operations.filter(operation => operation === 'save').length, 1);
 });
 
+test('external native generation cannot bypass failed restoration', async () => {
+    const h = setup([], 'failed');
+    h.native.loadSaved = async () => { throw new Error('Read unavailable'); };
+    await assert.rejects(h.queue.enqueue('send', { message: message(), iteration: 0 }, sender));
+    await assert.rejects(h.queue.prepareGeneration(), /Read unavailable/);
+});
+
 test('edit confirmation matches current text, never historical swipe', () => {
     assert.equal(typeof api.confirmAction, 'function');
     const target = message(); target.swipes = ['old', target.mes];

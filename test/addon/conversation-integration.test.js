@@ -108,6 +108,24 @@ test('Regenerate preserves native group regeneration and right swipe selects nat
     assert.deepEqual(h.generated, []);
 });
 
+test('native swipe receives the clicked message and awaits its persistence barrier', async t => {
+    const h = await fixture(t);
+    const target = { mes: 'older AI', is_user: false, extra: { multiplayer: { messageId: id } } };
+    h.native.chat.push(target, { mes: 'last AI', is_user: false });
+    h.integration.session.localSaved(h.native.chat);
+    const row = h.dom.window.document.createElement('div'); row.className = 'mes'; row.setAttribute('mesid', '0');
+    const button = h.dom.window.document.createElement('button'); button.className = 'swipe_right'; row.append(button); h.dom.window.document.querySelector('#chat').append(row);
+    let swiped;
+    let cancelled = false;
+    h.native.swipe_right = async (_event, options) => { swiped = options?.message; };
+    h.native.cancelDebouncedChatSave = () => { cancelled = true; };
+    button.click();
+    await settle();
+    assert.equal(swiped, target);
+    assert.equal(cancelled, true);
+    assert.equal(h.saves.length, 1);
+});
+
 test('mounted command processing does not add a second human turn', async t => {
     const h = await fixture(t);
     h.dom.window.document.querySelector('#send_textarea').value = '/echo hello';
