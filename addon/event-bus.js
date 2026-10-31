@@ -1,5 +1,5 @@
 const lifecycleEvents = new Set(['bus.connected', 'bus.disconnected', 'bus.status']);
-const serverEvents = new Set(['multiplayer.owner.changed', 'multiplayer.lorebooks.changed']);
+const serverEvents = new Set(['multiplayer.owner.changed', 'multiplayer.lorebooks.changed', 'multiplayer.participant.left']);
 const retryDelays = [1000, 2000, 4000, 8000, 15000];
 const identityFields = ['accountId', 'groupId', 'chatId'];
 

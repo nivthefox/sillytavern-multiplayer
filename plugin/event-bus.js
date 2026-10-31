@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 const lifecycleEvents = new Set(['bus.connected', 'bus.disconnected', 'bus.status']);
-const serverEvents = new Set(['multiplayer.owner.changed', 'multiplayer.lorebooks.changed']);
+const serverEvents = new Set(['multiplayer.owner.changed', 'multiplayer.lorebooks.changed', 'multiplayer.participant.left']);
 const errorMessages = {
     invalid_request: 'Invalid event-bus request.',
     forbidden: 'Access to this chat is forbidden.',
@@ -259,7 +259,8 @@ export class EventBus {
             return;
         }
         const before = bookKey(room);
-        if (![...room.clients].some(client => client.accountId === connection.accountId)) {
+        const accountLeft = ![...room.clients].some(client => client.accountId === connection.accountId);
+        if (accountLeft) {
             room.contributions.delete(connection.accountId);
         }
         this.#updateStatus(room);
@@ -268,6 +269,9 @@ export class EventBus {
         }
         if (before !== bookKey(room)) {
             this.#broadcast(room, 'multiplayer.lorebooks.changed', { lorebooks: combinedBooks(room) });
+        }
+        if (accountLeft) {
+            this.#broadcast(room, 'multiplayer.participant.left', { accountId: connection.accountId });
         }
     }
 

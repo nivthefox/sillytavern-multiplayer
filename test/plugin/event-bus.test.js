@@ -73,6 +73,38 @@ function sender(client) {
     return { accountId: client.accountId, connectionId: client.connection.id };
 }
 
+for (const accountId of ['guest', 'host']) {
+    for (const departure of ['leave', 'disconnect', 'switch']) {
+        test(`participant departure broadcasts only after the last ${accountId} connection: ${departure}`, async t => {
+            const { connect } = setup(t);
+            const first = connect(accountId);
+            const last = connect(accountId);
+            const observer = connect('observer');
+            const owner = connect(accountId === 'host' ? 'another-guest' : 'host');
+            for (const client of [first, last, observer, owner]) {
+                await join(client);
+            }
+            clear(first, last, observer, owner);
+            first.connection.disconnect();
+            assert.deepEqual(events(observer, 'multiplayer.participant.left'), []);
+            assert.deepEqual(events(owner, 'multiplayer.participant.left'), []);
+            if (departure === 'disconnect') {
+                last.connection.disconnect();
+            } else if (departure === 'leave') {
+                success(await request(last, { op: 'leave' }));
+            } else {
+                await join(last, otherChat);
+            }
+            for (const client of [observer, owner]) {
+                delivered(client, { accountId }, null, chat, 'multiplayer.participant.left');
+            }
+            assert.deepEqual(events(last, 'multiplayer.participant.left'), []);
+            last.connection.disconnect();
+            assert.equal(events(observer, 'multiplayer.participant.left').length, 1);
+        });
+    }
+}
+
 function deferred() {
     return Promise.withResolvers();
 }
@@ -351,7 +383,7 @@ for (const [name, raw, requestId] of malformed) {
     });
 }
 
-for (const name of ['multiplayer.owner.changed', 'multiplayer.lorebooks.changed', 'bus.connected', 'bus.disconnected', 'bus.status']) {
+for (const name of ['multiplayer.owner.changed', 'multiplayer.lorebooks.changed', 'multiplayer.participant.left', 'bus.connected', 'bus.disconnected', 'bus.status']) {
     test(`clients cannot publish reserved ${name}`, async t => {
         const { connect } = setup(t);
         const client = connect();

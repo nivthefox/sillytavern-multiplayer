@@ -546,16 +546,18 @@ test('consecutive incoming events retain order and server-originated events keep
     const socket = await h.connect();
     await h.join(socket);
     const calls = [];
-    for (const name of ['multiplayer.owner.changed', 'multiplayer.lorebooks.changed', 'rpg-companion.update']) {
+    for (const name of ['multiplayer.owner.changed', 'multiplayer.lorebooks.changed', 'multiplayer.participant.left', 'rpg-companion.update']) {
         h.bus.on(name, (...args) => calls.push([name, ...args]));
     }
     deliver(socket, chatA, {}, 'multiplayer.owner.changed', null);
     deliver(socket, chatA, { lorebooks: joinedData.lorebooks }, 'multiplayer.lorebooks.changed', null);
+    deliver(socket, chatA, { accountId: 'guest' }, 'multiplayer.participant.left', null);
     deliver(socket, chatA, [1, 2], 'rpg-companion.update', null);
     await flush();
     assert.deepEqual(calls, [
         ['multiplayer.owner.changed', chatA, null, {}],
         ['multiplayer.lorebooks.changed', chatA, null, { lorebooks: joinedData.lorebooks }],
+        ['multiplayer.participant.left', chatA, null, { accountId: 'guest' }],
         ['rpg-companion.update', chatA, null, [1, 2]],
     ]);
 });
@@ -594,7 +596,7 @@ test('status handlers cannot mutate another handler input or internal session st
     assert.deepEqual(h.bus.sessionStatus, { isOwner: true, ownerPresent: true });
 });
 
-for (const eventName of ['bus.connected', 'bus.disconnected', 'bus.status', 'multiplayer.owner.changed', 'multiplayer.lorebooks.changed']) {
+for (const eventName of ['bus.connected', 'bus.disconnected', 'bus.status', 'multiplayer.owner.changed', 'multiplayer.lorebooks.changed', 'multiplayer.participant.left']) {
     test(`application send rejects reserved event ${eventName}`, async () => {
         const h = createHarness();
         const socket = await h.connect();
