@@ -10,6 +10,25 @@ A multiplayer addon for sharing a scene with friends and an AI GM in SillyTavern
 - The person running your SillyTavern server must install the server plugin once. Installing the addon alone is not enough.
 - Server setup requires **Git, Node.js 22+, and npm**.
 
+## API for other addons
+
+Import `getEventBus()` from the installed extension's `addon/api.js`:
+
+```javascript
+const { getEventBus } = await import('/scripts/extensions/third-party/sillytavern-multiplayer/addon/api.js');
+const bus = await getEventBus();
+const unsubscribe = bus.on('my-addon.update', (chat, sender, body) => {
+    console.log(chat, sender, body);
+});
+await bus.send('all', 'my-addon.update', { value: 42 });
+```
+
+Adjust the extension folder name if installed under a different name. This returns the **same bus** used by multiplayer conversations and lorebooks, not a separate connection. It waits for addon initialization and rejects if initialization fails; it does not guarantee an active shared chat.
+
+Multiplayer manages connection, joining, leaving, and chat changes. Consumers should use `on()`, `send()`, and `sessionStatus`, not call `connect()`, `join()`, or `leave()` on this shared instance. Call the returned unsubscribe function when removing a listener. Use your own namespaced event names, not `multiplayer.*` or `bus.*`.
+
+Destinations are `all`, `owner`, `server`, or a connection ID in the current chat. `send()` rejects when disconnected or not joined; its acknowledgment confirms routing, not application processing. `sessionStatus` is `{ isOwner, ownerPresent }` or `null`. Subscribe to `bus.status`, `bus.connected`, and `bus.disconnected` for lifecycle updates. Full method contracts are documented in `addon/event-bus.js`.
+
 ## Installation
 
 ### For players

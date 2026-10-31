@@ -1,5 +1,4 @@
-import { initializeConversations } from './conversation-bootstrap.js';
-import { initializeOwnership } from './ownership-bootstrap.js';
+import { getEventBus } from './api.js';
 import { getPluginStatus } from './plugin-status.js';
 import { getSettingsContainer } from './settings-ui.js';
 
@@ -64,7 +63,7 @@ function initializeAddon() {
         return;
     }
     if (globalThis.SillyTavern) {
-        void initializeOwnership().then(() => initializeConversations()).catch(error => globalThis.toastr?.error(error.message, 'Multiplayer'));
+        void getEventBus().catch(error => globalThis.toastr?.error(error.message, 'Multiplayer'));
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', mountStatusPanel, { once: true });

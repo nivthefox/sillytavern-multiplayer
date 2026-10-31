@@ -51,10 +51,24 @@ async function fixture(t, isOwner = true, withLorebooks = false) {
     };
     const integration = await mountConversations({ native, window: dom.window, document: dom.window.document, accountId: isOwner ? 'owner' : 'guest', bus });
     t.after(async () => { await integration.dispose(); dom.window.close(); });
-    return { integration, native, dom, sent, saves, generated, prompts, personaRequests, failNextSave() { failSave = true; }, async emit(name, body, sender = { accountId: 'guest', connectionId: 'tab' }) { for (const listener of handlers.get(name) ?? []) { await listener(chat, sender, body); } } };
+    return { integration, bus, native, dom, sent, saves, generated, prompts, personaRequests, failNextSave() { failSave = true; }, async emit(name, body, sender = { accountId: 'guest', connectionId: 'tab' }) { for (const listener of handlers.get(name) ?? []) { await listener(chat, sender, body); } } };
 }
 
 async function settle() { for (let i = 0; i < 5; i++) { await new Promise(resolve => setImmediate(resolve)); } }
+
+test('public bus is the live conversation transport and supports independent consumers', async t => {
+    const h = await fixture(t);
+    assert.equal(h.integration.bus, h.bus);
+    const received = [];
+    const unsubscribe = h.integration.bus.on('example.ping', (identity, sender, body) => received.push(body));
+    await h.emit('example.ping', { value: 1 });
+    assert.deepEqual(received, [{ value: 1 }]);
+    await h.integration.bus.send('all', 'example.ping', { value: 2 });
+    assert.deepEqual(h.sent.at(-1), ['all', 'example.ping', { value: 2 }]);
+    unsubscribe();
+    await h.emit('example.ping', { value: 3 });
+    assert.equal(received.length, 1);
+});
 
 test('conversation startup mounts shared lorebooks on its existing bus and removes access on chat exit', async t => {
     const h = await fixture(t, true, true);
