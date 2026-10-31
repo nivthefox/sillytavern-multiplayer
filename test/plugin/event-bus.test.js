@@ -69,8 +69,8 @@ function delivered(client, body, sender, identity = chat, name = eventName) {
     assert.deepEqual(events(client, name), [{ op: 'event', chat: identity, eventName: name, sender, body }]);
 }
 
-function sender(client) {
-    return { accountId: client.accountId, connectionId: client.connection.id };
+function sender(client, isOwner = client.accountId === 'host') {
+    return { accountId: client.accountId, connectionId: client.connection.id, isOwner };
 }
 
 for (const accountId of ['guest', 'host']) {
@@ -269,7 +269,7 @@ test('successful chat replacement removes the old association and does not distu
     clear(client, guest, other);
     success(await send(client));
     assert.equal(events(guest).length, 0);
-    delivered(other, { value: 1 }, sender(client), otherChat);
+    delivered(other, { value: 1 }, sender(client, false), otherChat);
 });
 
 test('leave is idempotent and subsequent sends fail without joining', async t => {
@@ -307,6 +307,44 @@ for (const destination of ['all', 'owner', 'direct', 'self']) {
         }
     });
 }
+
+test('sender ownership is server-derived for browser and server deliveries and follows owner replacement', async t => {
+    const { bus, connect } = setup(t);
+    const owner = connect('host');
+    const secondary = connect('host');
+    const guest = connect();
+    for (const client of [owner, secondary, guest]) {
+        await join(client);
+    }
+    const seen = [];
+    bus.on(eventName, (identity, source, body) => seen.push({ source, body }));
+    const body = { sender: { isOwner: true }, isOwner: true };
+    let selectedOwner = owner;
+    async function verify(client, isOwner) {
+        for (const destination of ['all', 'owner', guest.connection.id, 'server']) {
+            clear(guest);
+            success(await request(client, {
+                op: 'send', destination, eventName, body, sender: { isOwner: true }, isOwner: true,
+            }));
+            if (destination === 'server') {
+                assert.deepEqual(seen.at(-1), { source: sender(client, isOwner), body });
+            } else if (destination === 'owner') {
+                assert.deepEqual(events(selectedOwner).at(-1)?.sender, sender(client, isOwner));
+            } else {
+                delivered(guest, body, sender(client, isOwner));
+            }
+        }
+    }
+    await verify(owner, true);
+    await verify(secondary, false);
+    await verify(guest, false);
+    success(await request(owner, { op: 'leave' }));
+    selectedOwner = secondary;
+    await verify(secondary, true);
+    await join(owner);
+    await verify(owner, false);
+    await verify(guest, false);
+});
 
 test('owner destination includes the owning sender', async t => {
     const { connect } = setup(t);

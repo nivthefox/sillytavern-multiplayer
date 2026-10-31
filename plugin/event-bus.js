@@ -358,7 +358,7 @@ export class EventBus {
             }
             recipients = [target];
         }
-        const sender = source ? { accountId: source.accountId, connectionId: source.id } : null;
+        const sender = source ? { accountId: source.accountId, connectionId: source.id, isOwner: room.owner === source } : null;
         if (destination === 'server') {
             if (eventName === 'multiplayer.lorebooks.set' && source) {
                 this.#contribute(room, source, body);

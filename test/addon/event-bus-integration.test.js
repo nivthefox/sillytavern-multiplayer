@@ -83,11 +83,14 @@ test('browser library interoperates with authenticated tickets, ownership, routi
     const [identity, sender, body] = await delivered;
     assert.deepEqual(identity, chat);
     assert.equal(sender.accountId, 'guest');
+    assert.equal(sender.isOwner, false);
     assert.equal(typeof sender.connectionId, 'string');
     assert.deepEqual(body, { text: 'hello' });
     const reply = nextEvent(guest, 'companion.reply');
     await owner.send(sender.connectionId, 'companion.reply', { text: 'received' });
-    assert.deepEqual((await reply)[2], { text: 'received' });
+    const [, replySender, replyBody] = await reply;
+    assert.equal(replySender.isOwner, true);
+    assert.deepEqual(replyBody, { text: 'received' });
     const serverEvent = nextEvent(guest, 'companion.server');
     await plugin.send(chat, 'all', 'companion.server', [1, 2]);
     assert.deepEqual(await serverEvent, [chat, null, [1, 2]]);
