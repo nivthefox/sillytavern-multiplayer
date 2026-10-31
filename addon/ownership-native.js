@@ -1,3 +1,5 @@
+import { getSettingsContainer } from './settings-ui.js';
+
 function sourceKey(owner, id) {
     return JSON.stringify([owner, String(id)]);
 }
@@ -322,7 +324,7 @@ export function createOwnershipNative({ service, native, document, window }) {
     }
 
     function mountPreference() {
-        const container = document.getElementById('extensions_settings');
+        const container = getSettingsContainer(document);
         if (!container || preferencePanel) {
             return;
         }

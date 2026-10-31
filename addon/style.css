@@ -1,3 +1,21 @@
+#multiplayer_settings_content {
+    padding: 0 5px 10px;
+}
+
+#multiplayer_setup {
+    margin-bottom: 10px;
+}
+
+#multiplayer_setup [hidden] {
+    display: none !important;
+}
+
+#multiplayer_setup .menu_button:not([hidden]) {
+    display: block;
+    margin-top: 10px;
+    white-space: nowrap;
+}
+
 .multiplayer-owner-badge {
     position: absolute;
     right: 0;
