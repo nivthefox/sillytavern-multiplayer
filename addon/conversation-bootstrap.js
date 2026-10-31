@@ -305,7 +305,7 @@ export async function mountConversations({ native, window, document, accountId, 
     }
     ui.mount();
     previewObserver.observe(document.querySelector('#chat') ?? document.body, { childList: true, subtree: true, characterData: true });
-    await changed();
+    void changed().catch(report);
     return {
         /** @returns {BrowserEventBus} Shared transport managed by this integration. */
         get bus() { return bus; },

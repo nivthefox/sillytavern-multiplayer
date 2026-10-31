@@ -6,7 +6,7 @@ import { mountConversations } from '../../addon/conversation-bootstrap.js';
 const id = '5ad90182-f1e2-4f6b-a143-c9d20d0b20d1';
 const chat = { accountId: 'owner', groupId: 'g', chatId: 'c' };
 
-async function fixture(t, isOwner = true, withLorebooks = false) {
+async function fixture(t, isOwner = true, withLorebooks = false, { connect = async () => {}, waitForStartup = true } = {}) {
     const dom = new JSDOM('<textarea id="send_textarea"></textarea><button id="send_but"></button><div id="chat"></div><button id="option_continue"></button><button id="option_regenerate"></button><button class="swipe_right"></button><div class="group_member" data-chid="0"><button data-action="speak"></button></div>', { url: 'http://localhost/' });
     const events = new Map();
     const handlers = new Map();
@@ -45,16 +45,29 @@ async function fixture(t, isOwner = true, withLorebooks = false) {
         return Response.json(saved);
     };
     const bus = {
-        async connect() {}, async join() { return { isOwner, ownerPresent: true, ...(withLorebooks ? { lorebooks: [{ accountId: 'other', filename: 'World.json' }] } : {}) }; }, async leave() {},
+        connect, async join() { return { isOwner, ownerPresent: true, ...(withLorebooks ? { lorebooks: [{ accountId: 'other', filename: 'World.json' }] } : {}) }; }, async leave() {},
         async send(...args) { sent.push(args); },
         on(name, listener) { const list = handlers.get(name) ?? []; list.push(listener); handlers.set(name, list); return () => { handlers.set(name, list.filter(value => value !== listener)); }; },
     };
     const integration = await mountConversations({ native, window: dom.window, document: dom.window.document, accountId: isOwner ? 'owner' : 'guest', bus });
     t.after(async () => { await integration.dispose(); dom.window.close(); });
+    if (waitForStartup) { await settle(); }
     return { integration, bus, native, dom, sent, saves, generated, prompts, personaRequests, failNextSave() { failSave = true; }, async emit(name, body, sender = { accountId: 'guest', connectionId: 'tab' }) { for (const listener of handlers.get(name) ?? []) { await listener(chat, sender, body); } } };
 }
 
 async function settle() { for (let i = 0; i < 5; i++) { await new Promise(resolve => setImmediate(resolve)); } }
+
+test('public bus is available before the initial connection completes', { timeout: 1000 }, async t => {
+    let finishConnection;
+    const connection = new Promise(resolve => { finishConnection = resolve; });
+    t.after(() => finishConnection());
+    const h = await fixture(t, true, false, { connect: () => connection, waitForStartup: false });
+    assert.equal(h.integration.bus, h.bus);
+    assert.equal(h.integration.session.getState().connected, false);
+    finishConnection();
+    await settle();
+    assert.equal(h.integration.session.getState().connected, true);
+});
 
 test('public bus is the live conversation transport and supports independent consumers', async t => {
     const h = await fixture(t);
